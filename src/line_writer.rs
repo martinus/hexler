@@ -1,3 +1,4 @@
+use crate::byte_to_color::ByteToColor;
 use std::io::prelude::*;
 
 pub struct LineWriter {
@@ -86,6 +87,7 @@ impl LineWriter {
     const COLOR_RESET: &'static str = "\u{001b}[0m";
 
     pub fn new(max_bytes_per_line: usize) -> Self {
+        let c = ByteToColor::new();
         Self {
             writer: std::io::BufWriter::new(std::io::stdout()),
             max_bytes_per_line,

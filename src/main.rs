@@ -1,4 +1,5 @@
 pub mod line_writer;
+pub mod byte_to_color;
 
 use clap::Parser;
 use line_writer::LineWriter;
