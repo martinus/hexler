@@ -21,4 +21,4 @@
   * gray & whilte
   * prints ALL characters!
   * xd --example
-  * 
+
