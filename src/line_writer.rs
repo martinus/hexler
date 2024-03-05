@@ -86,12 +86,12 @@ impl LineWriter {
             } else {
                 &Self::HEX_SPACE
             };
-            //let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
-            //if next_color_id != previous_color_id {
+            let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
+            if next_color_id != previous_color_id {
                 let col = self.byte_to_color.color(buffer[i]);
                 self.writer.write_all(&col.as_bytes())?;
-                //previous_color_id = next_color_id;
-            //}
+                previous_color_id = next_color_id;
+            }
             self.writer.write_all(hex)?;
         }
 
@@ -99,12 +99,11 @@ impl LineWriter {
         self.writer.write_all(&Self::SPACE)?;
         for i in 0..bytes_in_buffer {
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
-            //if next_color_id != previous_color_id {
-                let x = self.byte_to_color.color(buffer[i]);
+            if next_color_id != previous_color_id {
                 self.writer
                     .write_all(&self.byte_to_color.color(buffer[i]).as_bytes())?;
-                //previous_color_id = next_color_id;
-            //}
+                previous_color_id = next_color_id;
+            }
             self.writer
                 .write_all(Self::CODE_PAGE_437[buffer[i] as usize].as_bytes())?;
         }
