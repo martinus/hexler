@@ -1,5 +1,5 @@
-pub mod line_writer;
 pub mod byte_to_color;
+pub mod line_writer;
 
 use clap::Parser;
 use line_writer::LineWriter;
@@ -44,9 +44,8 @@ fn dump<R: std::io::Read>(mut reader: R, num_bytes_per_line: usize) -> std::io::
             }
         }
     }
-    line_writer.write_line(&line_buffer, num_bytes_in_line)?;
-
-    Ok(())
+    // line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+    line_writer.flush()
 }
 
 /**
