@@ -44,7 +44,7 @@ fn dump<R: std::io::Read>(mut reader: R, num_bytes_per_line: usize) -> std::io::
             }
         }
     }
-    // line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+    line_writer.write_line(&line_buffer, num_bytes_in_line)?;
     line_writer.flush()
 }
 
