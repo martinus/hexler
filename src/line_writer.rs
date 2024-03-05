@@ -3,6 +3,7 @@ use std::io::prelude::*;
 
 pub struct LineWriter {
     writer: std::io::BufWriter<std::io::Stdout>,
+    byte_to_color: ByteToColor,
     max_bytes_per_line: usize,
     byte_counter: usize,
 }
@@ -11,7 +12,7 @@ impl LineWriter {
     // https://de.wikipedia.org/wiki/Codepage_437
     #[rustfmt::skip]
     const CODE_PAGE_437: [&'static str; 256] = [
-        "␀", "☺", "☻", "♥", "♦", "♣", "♠", "•", "◘", "○", "◙", "♂", "♀", "♪", "♫", "☼", // 00-0f
+        ".", "☺", "☻", "♥", "♦", "♣", "♠", "•", "◘", "○", "◙", "♂", "♀", "♪", "♫", "☼", // 00-0f
         "►", "◄", "↕", "‼", "¶", "§", "▬", "↨", "↑", "↓", "→", "←", "∟", "↔", "▲", "▼", // 10-1f
         " ", "!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+", ",", "-", ".", "/", // 20-2f
         "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", ":", ";", "<", "=", ">", "?", // 30-3f
@@ -49,56 +50,29 @@ impl LineWriter {
         "f0", "f1", "f2", "f3", "f4", "f5", "f6", "f7",  "f8", "f9", "fa", "fb", "fc", "fd", "fe", "ff", // f0-ff
     ];
 
-    #[rustfmt::skip]
-    const COLORS: [&'static str; 256] = [
-        "[30m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m",  "[35m", "[35m", "[32m", "[32m", "[32m", "[32m", "[35m", "[35m", // 00-0f
-        "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m",  "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", "[35m", // 10-1f
-        "[32m", "[36m", "[36m", "[36m", "[36m", "[36m", "[36m", "[36m",  "[36m", "[36m", "[36m", "[36m", "[36m", "[36m", "[36m", "[36m", // 20-2f
-        "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m",  "[39m", "[39m", "[36m", "[36m", "[36m", "[36m", "[36m", "[36m", // 30-3f
-        "[36m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m",  "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", // 40-4f
-        "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m",  "[39m", "[39m", "[39m", "[36m", "[36m", "[36m", "[36m", "[36m", // 50-5f
-        "[36m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m",  "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", // 60-6f
-        "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m", "[39m",  "[39m", "[39m", "[39m", "[33m", "[33m", "[33m", "[33m", "[30m", // 70-7f
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // 80-8f
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // 90-9f
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // a0-af
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // b0-bf
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // c0-cf
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // d0-df
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", // e0-ef
-        "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m",  "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[34m", "[30m", // f0-ff
-    ];
-
-    // 00: grey
-    // 01-1f: red, control character (magenta)
-    // 20, 0a, 0b, 0c, 0d: space (green)
-    // 21-2f: symbols [36m
-    // 30-39: digits
-    // 3a-40: symbols [36m
-    // 41-5a: uppercase letters
-    // 5b-60: symbols [36m
-    // 61-7a: lowercase letters
-    // 7b-7e: symbols [33m
-    //
-
     const SPACE: &'static [u8] = b" ";
     const NEWLINE: &'static [u8] = b"\n";
     const HEX_SPACE: &'static [u8] = b"  ";
-    const COLOR_RESET: &'static str = "\u{001b}[0m";
+    const COLOR_RESET: &'static str = "[0m";
 
     pub fn new(max_bytes_per_line: usize) -> Self {
-        let c = ByteToColor::new();
         Self {
             writer: std::io::BufWriter::new(std::io::stdout()),
+            byte_to_color: ByteToColor::new(),
             max_bytes_per_line,
             byte_counter: 0,
         }
     }
 
+    // Writes hex lines, like so:
+    // 00000000:  00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  ␀☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
+        // writes byte offset, e.g. "00000000:  "
         write!(&mut self.writer, "{:08x}: ", self.byte_counter)?;
         self.byte_counter += bytes_in_buffer;
 
+        // write hex numbers "00 01 ..."
+        let mut previous_color_id: u8 = 0;
         for i in 0..self.max_bytes_per_line {
             if i % 8 == 0 {
                 self.writer.write_all(&Self::SPACE)?;
@@ -108,21 +82,33 @@ impl LineWriter {
             } else {
                 &Self::HEX_SPACE
             };
-            self.writer
-                .write_all(&Self::COLORS[buffer[i] as usize].as_bytes())?;
+            let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
+            if next_color_id != previous_color_id {
+                let col = self.byte_to_color.color(buffer[i]);
+                self.writer.write_all(&col.as_bytes())?;
+                previous_color_id = next_color_id;
+            }
             self.writer.write_all(&hex)?;
             self.writer.write_all(&Self::SPACE)?;
         }
 
+        // Write codepage 437 characters
         self.writer.write_all(&Self::SPACE)?;
         for i in 0..bytes_in_buffer {
-            let b = buffer[i] as usize;
-            self.writer.write_all(&Self::COLORS[b].as_bytes())?;
+            let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
+            if next_color_id != previous_color_id {
+                self.writer
+                    .write_all(&self.byte_to_color.color(buffer[i]).as_bytes())?;
+                previous_color_id = next_color_id;
+            }
             self.writer
-                .write_all(Self::CODE_PAGE_437[b].as_bytes())
-                .unwrap();
+                .write_all(Self::CODE_PAGE_437[buffer[i] as usize].as_bytes())?;
         }
-        self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
+
+        // done, newline!
+        //if previous_color_id != 0 {
+            self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
+        //}
         self.writer.write_all(&Self::NEWLINE)?;
         Ok(())
     }

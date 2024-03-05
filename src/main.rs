@@ -58,7 +58,7 @@ fn main() {
 
     let stdin: std::io::Stdin = std::io::stdin();
     let start: Instant = Instant::now();
-    let _ = dump(stdin.lock(), 32);
+    let _ = dump(stdin.lock(), 16);
     let end: Instant = Instant::now();
     eprintln!("\n{:?} sec", end.duration_since(start));
 }

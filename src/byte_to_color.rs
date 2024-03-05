@@ -5,8 +5,6 @@ pub struct ByteToColor {
     color_id: [u8; 256],
 }
 
-const ARRAY_REPEAT_VALUE: std::string::String = String::new();
-
 impl ByteToColor {
     const BLACK: &'static str = "[30m";
     const RED: &'static str = "[31m";
@@ -16,15 +14,24 @@ impl ByteToColor {
     const MAGENTA: &'static str = "[35m";
     const CYAN: &'static str = "[36m";
     const WHITE: &'static str = "[37m";
-    const DEFAULT: &'static str = "[39m";
     const RESET: &'static str = "[0m";
+    const BOLD: &'static str = "[1m";
 
+    // This Rust function, new(), initializes an array of colors (colors) and associates each byte value with a
+    // specific color. It creates the necessary mappings by iterating over all possible byte values from 0 to 255.
+    // The function assigns colors based on certain criteria such as NUL or whitespace characters, symbols, digits,
+    // uppercase letters, lowercase letters, and remaining high bytes.
+    //
+    // The color ID is stored in a separate array (color_id) for efficient lookup later
     pub fn new() -> Self {
-        let mut colors = [Self::DEFAULT; 256];
+        let mut colors = [Self::RESET; 256];
         let mut color_id = [0u8; 256];
 
         let mut unique_color_count = 0u8;
         let mut color_to_id = HashMap::<&str, u8>::new();
+
+        // id 0 is reset!
+        color_to_id.insert(Self::RESET, 0);
 
         for i in 0..=255u8 {
             let color = match i {
@@ -39,9 +46,9 @@ impl ByteToColor {
                     Self::MAGENTA
                 }
 
-                0x30..=0x39 => Self::DEFAULT, // digits
-                0x41..=0x5a => Self::DEFAULT, // uppercase letters
-                0x61..=0x7a => Self::DEFAULT, // lowercase letters
+                0x30..=0x39 => Self::RESET, // digits
+                0x41..=0x5a => Self::RESET, // uppercase letters
+                0x61..=0x7a => Self::RESET, // lowercase letters
 
                 // remaining high bytes
                 0x80..=0xff => Self::BLUE,
@@ -52,17 +59,25 @@ impl ByteToColor {
                 unique_color_count
             });
             color_id[i as usize] = *val;
-        }
 
-        // map each color to a unique
-        // TODO: continue here
-        for i in 0..256 {
-            print!("{:02x}:{} ", i, color_id[i]);
+            /*
+            if i % 32 == 0 {
+                print!("\n");
+            }
+            print!("{}", *val);
+            */
         }
 
         Self {
             color_ary: colors,
-            color_id: [0u8; 256],
+            color_id,
         }
+    }
+
+    pub fn color(&self, byte: u8) -> &str {
+        self.color_ary[byte as usize]
+    }
+    pub fn color_id(&self, byte: u8) -> u8 {
+        self.color_id[byte as usize]
     }
 }
