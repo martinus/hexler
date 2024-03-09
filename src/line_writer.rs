@@ -39,9 +39,10 @@ impl LineWriter {
     pub fn new(max_bytes_per_line: usize) -> Self {
         let mut hex = [[0u8; 3]; 256];
         for i in 0..256 {
-            hex[i][0] = b"0123456789abcdef"[i >> 4];
-            hex[i][1] = b"0123456789abcdef"[i & 0xf];
-            hex[i][2] = b' ';
+            let hex_chars = b"0123456789abcdef";
+            hex[i][0] = hex_chars[i >> 4];
+            hex[i][1] = hex_chars[i & 0xf];
+            hex[i][2] = b' '; // space
         }
         Self {
             writer: std::io::BufWriter::new(std::io::stdout()),
@@ -52,7 +53,7 @@ impl LineWriter {
         }
     }
 
-    // fast version of
+    // much faster version for this:
     // write!(&mut self.writer, "{:08x}: ", self.byte_counter)?;
     fn write_hex_byte_offset(&mut self) -> std::io::Result<()> {
         let mut hex_line_no: [u8; 10] = [0u8; 8 + 2];
