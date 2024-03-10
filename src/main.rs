@@ -3,18 +3,18 @@ pub mod line_writer;
 
 use clap::Parser;
 use line_writer::LineWriter;
-use std::time::Instant;
+use std::{io, time::Instant};
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about="A colorful hex printer", long_about = None)]
 struct Args {
-    /// Number of times to greet
-    #[arg(short, long, default_value_t = 1)]
-    count: u8,
+    /// Number of bytes per line. Must be multiple of 8
+    #[arg(short, long, default_value_t = 16)]
+    num_bytes: usize,
 
     /// Demonstrate output with each byte
     #[arg(long, default_value_t = false)]
-    example: bool,
+    demo: bool,
 }
 
 // default format: 32 bytes per line
@@ -48,16 +48,41 @@ fn dump<R: std::io::Read>(mut reader: R, num_bytes_per_line: usize) -> std::io::
     line_writer.flush()
 }
 
-/**
- *
- */
-fn main() {
+fn demo() -> std::io::Result<()> {
+    let mut arr = [0u8; 256];
+    for i in 0..256 {
+        arr[i] = i as u8;
+    }
+    let reader = io::Cursor::new(arr);
+    dump(reader, 16)
+}
+
+fn run() -> std::io::Result<()> {
     // TODO read from file if specified in args, use maximum width
     let args: Args = Args::parse();
 
-    let stdin: std::io::Stdin = std::io::stdin();
-    let start: Instant = Instant::now();
-    let _ = dump(stdin.lock(), 16);
-    let end: Instant = Instant::now();
-    eprintln!("\n{:?} sec", end.duration_since(start));
+    if args.demo {
+        return demo();
+    }
+
+    if args.num_bytes % 8 != 0 || args.num_bytes < 8 {
+        eprintln!(
+            "Error: num-bytes must be multiple of 8 and a minimum of 8, but it's {}",
+            args.num_bytes
+        );
+        std::process::exit(1);
+    }
+
+    let stdin = std::io::stdin();
+    dump(stdin.lock(), args.num_bytes)
+}
+
+fn main() {
+    let result = run();
+    if let Err(err) = result {
+        if err.kind() != std::io::ErrorKind::BrokenPipe {
+            eprintln!("Error: {err:?}");
+            std::process::exit(1);
+        }
+    }
 }
