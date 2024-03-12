@@ -1,6 +1,9 @@
 pub mod byte_to_color;
 pub mod line_writer;
 
+use size::Size;
+use std::{fs, io::Read, os::{linux::fs::MetadataExt, unix::fs::FileTypeExt}};
+
 use clap::Parser;
 use line_writer::LineWriter;
 
@@ -14,11 +17,19 @@ struct Args {
     /// Demonstrate output with each byte
     #[arg(long, default_value_t = false)]
     demo: bool,
+
+    /// The file to display. If none is provided, the standard input (stdin) will be used instead.
+    #[arg()]
+    file: Option<std::path::PathBuf>,
 }
 
 // default format: 32 bytes per line
 // 001428d0: f30f 1efa 5548 89e5  4156 4154 5348 81ec  8800 0000 4c8b 364c  8b67 0864 488b 0425  ....UH..AVATSH......L.6L.g.dH..%
-fn dump<R: std::io::Read>(mut reader: R, num_bytes_per_line: usize) -> std::io::Result<()> {
+fn dump<R: std::io::Read>(
+    title: &str,
+    mut reader: R,
+    num_bytes_per_line: usize,
+) -> std::io::Result<()> {
     // first, create a hex lookup table
     let mut buffer = [0u8; 4096];
 
@@ -26,6 +37,9 @@ fn dump<R: std::io::Read>(mut reader: R, num_bytes_per_line: usize) -> std::io::
 
     let mut num_bytes_in_line = 0;
     let mut line_buffer = [0u8; 1024];
+
+    line_writer.write_header(title)?;
+
     loop {
         let bytes_read = reader.read(&mut buffer)?;
         if bytes_read == 0 {
@@ -53,25 +67,23 @@ fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
         arr[i] = i as u8;
     }
     let reader = std::io::Cursor::new(arr);
-    dump(reader, num_bytes_per_line)
+    dump("demo, 256 bytes, 0 to 255", reader, num_bytes_per_line)
 }
 
 // Given maximum terminal width, calculate the number of bytes to print per line that just fits.
 
 fn calc_num_bytes(max_width: usize) -> usize {
     let mut num_groups_of_8: usize = 1;
-    while 12 + (num_groups_of_8 + 1) * 33 <= max_width {
+    while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
         num_groups_of_8 += 1;
     }
     return num_groups_of_8 * 8;
 }
 
 fn run() -> std::io::Result<()> {
-    // TODO read from file if specified in args, use maximum width
     let args: Args = Args::parse();
 
     // determine number of bytes per line
-
     let num_bytes = args
         .num_bytes
         .unwrap_or_else(|| calc_num_bytes(term_size::dimensions().unwrap().0));
@@ -87,8 +99,28 @@ fn run() -> std::io::Result<()> {
         return demo(num_bytes);
     }
 
-    let stdin = std::io::stdin();
-    dump(stdin.lock(), num_bytes)
+    match args.file {
+        Some(file) => {
+            let md = fs::metadata(&file)?;
+            let size = Size::from_bytes(md.len());
+            let t: time::OffsetDateTime = md.modified().unwrap().into();
+            let title = format!(
+                "[1m{}[0m  {}, {} {} {} {:0>2}:{:0>2}:{:0>2}",
+                &file.display(),
+                size,
+                t.day(),
+                t.month(),
+                t.year(),
+                t.hour(),
+                t.minute(),
+                t.second()
+            );
+
+            let f = std::fs::File::open(&file);
+            dump(title.as_str(), f?, num_bytes)
+        }
+        None => dump("stdin", std::io::stdin().lock(), num_bytes),
+    }
 }
 
 fn main() {

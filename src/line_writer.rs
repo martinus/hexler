@@ -54,11 +54,9 @@ impl LineWriter {
     }
 
     // much faster version for this:
-    // write!(&mut self.writer, "{:08x}: ", self.byte_counter)?;
+    // write!(&mut self.writer, "{:08x}", self.byte_counter)?;
     fn write_hex_byte_offset(&mut self) -> std::io::Result<()> {
-        let mut hex_line_no: [u8; 10] = [0u8; 8 + 2];
-        hex_line_no[8] = b':';
-        hex_line_no[9] = b' ';
+        let mut hex_line_no: [u8; 8] = [0u8; 8];
 
         let mut bc = self.byte_counter;
         for i in 0..8 {
@@ -69,10 +67,34 @@ impl LineWriter {
         self.writer.write_all(&hex_line_no)
     }
 
+    pub fn write_header(&mut self, title: &str) -> std::io::Result<()> {
+        let num_groups = self.max_bytes_per_line / 8;
+        let num_bytes_per_group = 8 * 3 + 1;
+
+        write!(&mut self.writer, "{}\n", title)?;
+        self.writer.write_all("─────────┬".as_bytes())?;
+        for _ in 0..(num_groups * num_bytes_per_group) {
+            self.writer.write_all("─".as_bytes())?;
+        }
+        self.writer.write_all("┬".as_bytes())?;
+        for _ in 0..(self.max_bytes_per_line + 1) {
+            self.writer.write_all("─".as_bytes())?;
+        }
+        self.writer.write_all("\n".as_bytes())?;
+
+        Ok(())
+
+        // ─────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        //     File │ /home/martinus/.gitconfig
+        // ─────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+        // 00000000 │ 00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  20 21 22 23 24 25 26 27  28 29 2a 2b 2c 2d 2e 2f │ ⋄☺☻♥♦♣♠•
+    }
+
     // Writes hex lines, like so:
     // 00000000:  00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  ␀☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         self.write_hex_byte_offset()?;
+        self.writer.write_all(" │".as_bytes())?;
 
         self.byte_counter += bytes_in_buffer;
 
@@ -97,7 +119,12 @@ impl LineWriter {
         }
 
         // Write codepage 437 characters
-        self.writer.write_all(&Self::SPACE)?;
+        if previous_color_id != 0 {
+            self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
+            previous_color_id = 0;
+        }
+        self.writer.write_all("│ ".as_bytes())?;
+        // self.writer.write_all(&Self::SPACE)?;
         for i in 0..bytes_in_buffer {
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
             if next_color_id != previous_color_id {
