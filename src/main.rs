@@ -2,7 +2,7 @@ pub mod byte_to_color;
 pub mod line_writer;
 
 use size::Size;
-use std::{fs, io::Read, os::{linux::fs::MetadataExt, unix::fs::FileTypeExt}};
+use std::fs;
 
 use clap::Parser;
 use line_writer::LineWriter;
