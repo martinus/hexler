@@ -3,7 +3,6 @@ pub mod line_writer;
 
 use clap::Parser;
 use line_writer::LineWriter;
-use std::{io, time::Instant};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about="A colorful hex printer", long_about = None)]
@@ -53,7 +52,7 @@ fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
     for i in 0..256 {
         arr[i] = i as u8;
     }
-    let reader = io::Cursor::new(arr);
+    let reader = std::io::Cursor::new(arr);
     dump(reader, num_bytes_per_line)
 }
 

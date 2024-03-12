@@ -7,15 +7,15 @@ pub struct ByteToColor {
 
 impl ByteToColor {
     const BLACK: &'static str = "[30m";
-    const RED: &'static str = "[31m";
+    // const RED: &'static str = "[31m";
     const GREEN: &'static str = "[32m";
-    const YELLOW: &'static str = "[33m";
+    // const YELLOW: &'static str = "[33m";
     const BLUE: &'static str = "[34m";
     const MAGENTA: &'static str = "[35m";
-    const CYAN: &'static str = "[36m";
-    const WHITE: &'static str = "[37m";
+    // const CYAN: &'static str = "[36m";
+    // const WHITE: &'static str = "[37m";
     const RESET: &'static str = "[0m";
-    const BOLD: &'static str = "[1m";
+    //const BOLD: &'static str = "[1m";
 
     // This Rust function, new(), initializes an array of colors (colors) and associates each byte value with a
     // specific color. It creates the necessary mappings by iterating over all possible byte values from 0 to 255.
