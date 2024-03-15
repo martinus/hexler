@@ -58,14 +58,21 @@ fn dump<R: std::io::Read>(
         }
     }
     line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+
+    // make sure that the line writer is flushed to stdout before returning.
     line_writer.flush()
 }
 
+/**
+ * This demo dumps the bytes 0 to 255 to stdout.
+ */
 fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..256 {
         arr[i] = i as u8;
     }
+
+    // we need to use Cursor so we get an std::io::Reader
     let reader = std::io::Cursor::new(arr);
     dump("demo, 256 bytes, 0 to 255", reader, num_bytes_per_line)
 }
@@ -83,7 +90,7 @@ fn calc_num_bytes(max_width: usize) -> usize {
 fn run() -> std::io::Result<()> {
     let args: Args = Args::parse();
 
-    // determine number of bytes per line
+    // determine terminal size, and from that the number of bytes to print per line.
     let num_bytes = args
         .num_bytes
         .unwrap_or_else(|| calc_num_bytes(term_size::dimensions().unwrap().0));
@@ -100,6 +107,7 @@ fn run() -> std::io::Result<()> {
     }
 
     match args.file {
+        // Reading from a known file, print its filename and it's last modified date
         Some(file) => {
             let md = fs::metadata(&file)?;
             let size = Size::from_bytes(md.len());

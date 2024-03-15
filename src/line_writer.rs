@@ -67,34 +67,42 @@ impl LineWriter {
         self.writer.write_all(&hex_line_no)
     }
 
+    #[inline(always)]
+    fn write(&mut self, text: &str) -> std::io::Result<()> {
+        self.writer.write_all(text.as_bytes())
+    }
+
+    // output looks like this, for 'hexler /usr/bin/ls':
+    //
+    // /usr/bin/ls  146 KiB, 18 January 2024 00:00:00
+    // ─────────┬───────────────────────────────────────────────────────────────────────────┬─────────────────────────
+    // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
+    // 00000018 │ 90 6e 00 00 00 00 00 00  40 00 00 00 00 00 00 00  e8 3f 02 00 00 00 00 00 │ Én⋄⋄⋄⋄⋄⋄@⋄⋄⋄⋄⋄⋄⋄Φ?☻⋄⋄⋄⋄⋄
     pub fn write_header(&mut self, title: &str) -> std::io::Result<()> {
         let num_groups = self.max_bytes_per_line / 8;
         let num_bytes_per_group = 8 * 3 + 1;
 
-        write!(&mut self.writer, "{}\n", title)?;
-        self.writer.write_all("─────────┬".as_bytes())?;
+        self.write(title)?;
+        self.write("\n")?;
+        self.write("─────────┬")?;
         for _ in 0..(num_groups * num_bytes_per_group) {
-            self.writer.write_all("─".as_bytes())?;
+            self.write("─")?;
         }
-        self.writer.write_all("┬".as_bytes())?;
+        self.write("┬")?;
         for _ in 0..(self.max_bytes_per_line + 1) {
-            self.writer.write_all("─".as_bytes())?;
+            self.write("─")?;
         }
-        self.writer.write_all("\n".as_bytes())?;
+        self.write("\n")?;
 
         Ok(())
-
-        // ─────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-        //     File │ /home/martinus/.gitconfig
-        // ─────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-        // 00000000 │ 00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  20 21 22 23 24 25 26 27  28 29 2a 2b 2c 2d 2e 2f │ ⋄☺☻♥♦♣♠•
     }
 
     // Writes hex lines, like so:
-    // 00000000:  00 01 02 03 04 05 06 07  08 09 0a 0b 0c 0d 0e 0f  10 11 12 13 14 15 16 17  18 19 1a 1b 1c 1d 1e 1f  ␀☺☻♥♦♣♠•◘○◙♂♀♪♫☼►◄↕‼¶§▬↨↑↓→←∟↔▲▼
+    //
+    // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         self.write_hex_byte_offset()?;
-        self.writer.write_all(" │".as_bytes())?;
+        self.write(" │")?;
 
         self.byte_counter += bytes_in_buffer;
 
