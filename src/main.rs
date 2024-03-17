@@ -2,6 +2,7 @@ pub mod byte_to_color;
 pub mod line_writer;
 
 use chrono::{DateTime, Local};
+use pager::Pager;
 use size::Size;
 use std::fs;
 
@@ -37,7 +38,7 @@ fn dump<R: std::io::Read>(
     let mut num_bytes_in_line = 0;
     let mut line_buffer = [0u8; 1024];
 
-    line_writer.write_header(title)?;
+    line_writer.write_border(line_writer::Border::Header, title)?;
 
     loop {
         let bytes_read = reader.read(&mut buffer)?;
@@ -57,6 +58,7 @@ fn dump<R: std::io::Read>(
         }
     }
     line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+    line_writer.write_border(line_writer::Border::Footer, "")?;
 
     // make sure that the line writer is flushed to stdout before returning.
     line_writer.flush()
@@ -89,6 +91,10 @@ fn run() -> std::io::Result<()> {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     });
+
+    // use less as the pager, much like git
+    Pager::with_pager("less --raw-control-chars --quit-if-one-screen").setup();
+
     if args.demo {
         return demo(&mut line_writer);
     }

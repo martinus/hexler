@@ -9,6 +9,11 @@ pub struct LineWriter {
     byte_counter: usize,
 }
 
+pub enum Border {
+    Header,
+    Footer,
+}
+
 impl LineWriter {
     // https://de.wikipedia.org/wiki/Codepage_437
     #[rustfmt::skip]
@@ -96,21 +101,25 @@ impl LineWriter {
     // ─────────┬───────────────────────────────────────────────────────────────────────────┬─────────────────────────
     // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
     // 00000018 │ 90 6e 00 00 00 00 00 00  40 00 00 00 00 00 00 00  e8 3f 02 00 00 00 00 00 │ Én⋄⋄⋄⋄⋄⋄@⋄⋄⋄⋄⋄⋄⋄Φ?☻⋄⋄⋄⋄⋄
-    pub fn write_header(&mut self, title: &str) -> std::io::Result<()> {
+    pub fn write_border(&mut self, border: Border, title: &str) -> std::io::Result<()> {
+        let (connector, pre, post) = match border {
+            Border::Header => ("┬", format!("{}\n", title), "\n".to_string()),
+            Border::Footer => ("┴", "".to_string(), format!("{}\n", title)),
+        };
         let num_groups = self.bytes_per_line / 8;
         let num_bytes_per_group = 8 * 3 + 1;
 
-        self.write(title)?;
-        self.write("\n")?;
-        self.write("─────────┬")?;
+        self.write(pre.as_str())?;
+        self.write("─────────")?;
+        self.write(connector)?;
         for _ in 0..(num_groups * num_bytes_per_group) {
             self.write("─")?;
         }
-        self.write("┬")?;
+        self.write(connector)?;
         for _ in 0..(self.bytes_per_line + 1) {
             self.write("─")?;
         }
-        self.write("\n")?;
+        self.write(post.as_str())?;
 
         Ok(())
     }
