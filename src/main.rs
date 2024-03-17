@@ -1,6 +1,7 @@
 pub mod byte_to_color;
 pub mod line_writer;
 
+use chrono::{DateTime, Local};
 use size::Size;
 use std::fs;
 
@@ -78,7 +79,6 @@ fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
 }
 
 // Given maximum terminal width, calculate the number of bytes to print per line that just fits.
-
 fn calc_num_bytes(max_width: usize) -> usize {
     let mut num_groups_of_8: usize = 1;
     while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
@@ -111,17 +111,12 @@ fn run() -> std::io::Result<()> {
         Some(file) => {
             let md = fs::metadata(&file)?;
             let size = Size::from_bytes(md.len());
-            let t: time::OffsetDateTime = md.modified().unwrap().into();
+            let modified_time: DateTime<Local> = md.modified().unwrap().into();
             let title = format!(
-                "[1m{}[0m  {}, {} {} {} {:0>2}:{:0>2}:{:0>2}",
+                "[1m{}[0m   {}   {}",
                 &file.display(),
                 size,
-                t.day(),
-                t.month(),
-                t.year(),
-                t.hour(),
-                t.minute(),
-                t.second()
+                modified_time.format("%-d %b %Y %H:%M:%S")
             );
 
             let f = std::fs::File::open(&file);

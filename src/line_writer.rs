@@ -109,6 +109,7 @@ impl LineWriter {
         // write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
         for i in 0..self.max_bytes_per_line {
+            // Add an additional space after 8 bytes
             if i % 8 == 0 {
                 self.writer.write_all(&Self::SPACE)?;
             }
@@ -144,7 +145,7 @@ impl LineWriter {
                 .write_all(Self::CODE_PAGE_437[buffer[i] as usize].as_bytes())?;
         }
 
-        // done, newline!
+        // finished writing bytes, so reset color and finally go to the next line
         if previous_color_id != 0 {
             self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
         }
