@@ -29,12 +29,10 @@ struct Args {
 fn dump<R: std::io::Read>(
     title: &str,
     mut reader: R,
-    num_bytes_per_line: usize,
+    line_writer: &mut LineWriter,
 ) -> std::io::Result<()> {
     // first, create a hex lookup table
     let mut buffer = [0u8; 4096];
-
-    let mut line_writer = LineWriter::new(num_bytes_per_line);
 
     let mut num_bytes_in_line = 0;
     let mut line_buffer = [0u8; 1024];
@@ -52,7 +50,7 @@ fn dump<R: std::io::Read>(
         for byte in &buffer[..bytes_read] {
             line_buffer[num_bytes_in_line] = *byte;
             num_bytes_in_line += 1;
-            if num_bytes_in_line == num_bytes_per_line {
+            if num_bytes_in_line == line_writer.bytes_per_line() {
                 line_writer.write_line(&line_buffer, num_bytes_in_line)?;
                 num_bytes_in_line = 0
             }
@@ -67,7 +65,7 @@ fn dump<R: std::io::Read>(
 /**
  * This demo dumps the bytes 0 to 255 to stdout.
  */
-fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
+fn demo(line_writer: &mut LineWriter) -> std::io::Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..256 {
         arr[i] = i as u8;
@@ -75,35 +73,24 @@ fn demo(num_bytes_per_line: usize) -> std::io::Result<()> {
 
     // we need to use Cursor so we get an std::io::Reader
     let reader = std::io::Cursor::new(arr);
-    dump("demo, 256 bytes, 0 to 255", reader, num_bytes_per_line)
-}
-
-// Given maximum terminal width, calculate the number of bytes to print per line that just fits.
-fn calc_num_bytes(max_width: usize) -> usize {
-    let mut num_groups_of_8: usize = 1;
-    while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
-        num_groups_of_8 += 1;
-    }
-    return num_groups_of_8 * 8;
+    dump("demo, 256 bytes, 0 to 255", reader, line_writer)
 }
 
 fn run() -> std::io::Result<()> {
     let args: Args = Args::parse();
 
     // determine terminal size, and from that the number of bytes to print per line.
-    let num_bytes = args
-        .num_bytes
-        .unwrap_or_else(|| calc_num_bytes(term_size::dimensions().unwrap().0));
-    if num_bytes % 8 != 0 || num_bytes < 8 {
-        eprintln!(
-            "Error: num-bytes must be multiple of 8 and a minimum of 8, but it's {}",
-            num_bytes
-        );
-        std::process::exit(1);
-    }
+    let line_writer = match args.num_bytes {
+        Some(num_bytes) => LineWriter::new_bytes(num_bytes),
+        None => LineWriter::new_max_width(term_size::dimensions().unwrap().0),
+    };
 
+    let mut line_writer: LineWriter = line_writer.unwrap_or_else(|e| {
+        eprintln!("Error: {}", e);
+        std::process::exit(1);
+    });
     if args.demo {
-        return demo(num_bytes);
+        return demo(&mut line_writer);
     }
 
     match args.file {
@@ -112,17 +99,23 @@ fn run() -> std::io::Result<()> {
             let md = fs::metadata(&file)?;
             let size = Size::from_bytes(md.len());
             let modified_time: DateTime<Local> = md.modified().unwrap().into();
+
+            let mut file_name_str = format!("{}", file.display());
+            if file_name_str.contains(' ') {
+                file_name_str = format!("'{}'", file_name_str);
+            }
+
             let title = format!(
                 "[1m{}[0m   {}   {}",
-                &file.display(),
+                file_name_str,
                 size,
                 modified_time.format("%-d %b %Y %H:%M:%S")
             );
 
             let f = std::fs::File::open(&file);
-            dump(title.as_str(), f?, num_bytes)
+            dump(title.as_str(), f?, &mut line_writer)
         }
-        None => dump("stdin", std::io::stdin().lock(), num_bytes),
+        None => dump("stdin", std::io::stdin().lock(), &mut line_writer),
     }
 }
 

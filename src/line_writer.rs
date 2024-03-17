@@ -5,7 +5,7 @@ pub struct LineWriter {
     writer: std::io::BufWriter<std::io::Stdout>,
     hex: [[u8; 3]; 256],
     byte_to_color: ByteToColor,
-    max_bytes_per_line: usize,
+    bytes_per_line: usize,
     byte_counter: usize,
 }
 
@@ -36,21 +36,39 @@ impl LineWriter {
     const HEX_SPACE: [u8; 3] = [b' '; 3];
     const COLOR_RESET: &'static str = "[0m";
 
-    pub fn new(max_bytes_per_line: usize) -> Self {
-        let mut hex = [[0u8; 3]; 256];
-        for i in 0..256 {
-            let hex_chars = b"0123456789abcdef";
-            hex[i][0] = hex_chars[i >> 4];
-            hex[i][1] = hex_chars[i & 0xf];
-            hex[i][2] = b' '; // space
+    pub fn new_bytes(bytes_per_line: usize) -> Result<Self, &'static str> {
+        if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
+            Err("num-bytes must be multiple of 8 and a minimum of 8")
+        } else {
+            let mut hex = [[0u8; 3]; 256];
+            for i in 0..256 {
+                let hex_chars = b"0123456789abcdef";
+                hex[i][0] = hex_chars[i >> 4];
+                hex[i][1] = hex_chars[i & 0xf];
+                hex[i][2] = b' '; // space
+            }
+            Ok(Self {
+                writer: std::io::BufWriter::new(std::io::stdout()),
+                byte_to_color: ByteToColor::new(),
+                hex,
+                bytes_per_line,
+                byte_counter: 0,
+            })
         }
-        Self {
-            writer: std::io::BufWriter::new(std::io::stdout()),
-            byte_to_color: ByteToColor::new(),
-            hex,
-            max_bytes_per_line,
-            byte_counter: 0,
+    }
+
+    // Calculates the maximum number of bytes allowed that fits into the given line width. Uses a minimum of 8 bytes.
+    pub fn new_max_width(max_width: usize) -> Result<Self, &'static str> {
+        let mut num_groups_of_8: usize = 1;
+        while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
+            num_groups_of_8 += 1;
         }
+
+        Self::new_bytes(num_groups_of_8 * 8)
+    }
+
+    pub fn bytes_per_line(&self) -> usize {
+        return self.bytes_per_line;
     }
 
     // much faster version for this:
@@ -79,7 +97,7 @@ impl LineWriter {
     // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
     // 00000018 │ 90 6e 00 00 00 00 00 00  40 00 00 00 00 00 00 00  e8 3f 02 00 00 00 00 00 │ Én⋄⋄⋄⋄⋄⋄@⋄⋄⋄⋄⋄⋄⋄Φ?☻⋄⋄⋄⋄⋄
     pub fn write_header(&mut self, title: &str) -> std::io::Result<()> {
-        let num_groups = self.max_bytes_per_line / 8;
+        let num_groups = self.bytes_per_line / 8;
         let num_bytes_per_group = 8 * 3 + 1;
 
         self.write(title)?;
@@ -89,7 +107,7 @@ impl LineWriter {
             self.write("─")?;
         }
         self.write("┬")?;
-        for _ in 0..(self.max_bytes_per_line + 1) {
+        for _ in 0..(self.bytes_per_line + 1) {
             self.write("─")?;
         }
         self.write("\n")?;
@@ -108,7 +126,7 @@ impl LineWriter {
 
         // write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
-        for i in 0..self.max_bytes_per_line {
+        for i in 0..self.bytes_per_line {
             // Add an additional space after 8 bytes
             if i % 8 == 0 {
                 self.writer.write_all(&Self::SPACE)?;
