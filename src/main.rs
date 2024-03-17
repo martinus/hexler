@@ -10,13 +10,17 @@ use clap::Parser;
 use line_writer::LineWriter;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about="A colorful hex printer", long_about = None)]
+#[command(author, version, about="A colorful hex printer with opinionated defaults", long_about = None)]
 struct Args {
     /// Number of bytes per line. Must be multiple of 8
     #[arg(short, long)]
-    num_bytes: Option<usize>,
+    num_bytes_per_line: Option<usize>,
 
-    /// Demonstrate output with each byte
+    /// Disables pager and write all output to stdout
+    #[arg(short, long, default_value_t = false)]
+    stdout: bool,
+
+    /// Writes bytes 0 to 255, only for demonstration purposes
     #[arg(long, default_value_t = false)]
     demo: bool,
 
@@ -93,7 +97,9 @@ fn run() -> std::io::Result<()> {
     });
 
     // use less as the pager, much like git
-    Pager::with_pager("less --raw-control-chars --quit-if-one-screen").setup();
+    if !args.stdout {
+        Pager::with_pager("less --raw-control-chars --quit-if-one-screen").setup();
+    }
 
     if args.demo {
         return demo(&mut line_writer);

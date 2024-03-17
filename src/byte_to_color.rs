@@ -6,7 +6,7 @@ pub struct ByteToColor {
 }
 
 impl ByteToColor {
-    const BLACK: &'static str = "[90m";
+    const GREY: &'static str = "[90m";
     // const RED: &'static str = "[31m";
     const GREEN: &'static str = "[32m";
     // const YELLOW: &'static str = "[33m";
@@ -36,7 +36,7 @@ impl ByteToColor {
         for i in 0..=255u8 {
             let color = match i {
                 // NUL, 0xff
-                0x00 | 0x7f | 0xff => Self::BLACK,
+                0x00 | 0x7f | 0xff => Self::GREY,
 
                 // whitespace
                 0x0a | 0x0b | 0x0c | 0x0d | 0x20 => Self::GREEN,

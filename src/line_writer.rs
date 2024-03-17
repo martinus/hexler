@@ -39,6 +39,7 @@ impl LineWriter {
     const SPACE: &'static [u8] = b" ";
     const NEWLINE: &'static [u8] = b"\n";
     const HEX_SPACE: [u8; 3] = [b' '; 3];
+    const GREY: &'static str = "[90m";
     const COLOR_RESET: &'static str = "[0m";
 
     pub fn new_bytes(bytes_per_line: usize) -> Result<Self, &'static str> {
@@ -78,16 +79,25 @@ impl LineWriter {
 
     // much faster version for this:
     // write!(&mut self.writer, "{:08x}", self.byte_counter)?;
+    // also
     fn write_hex_byte_offset(&mut self) -> std::io::Result<()> {
-        let mut hex_line_no: [u8; 8] = [0u8; 8];
+        // only show a 32bit number. Ought to be large enough for everyone
+        let bc = self.byte_counter as u32;
+        let num_leading_hex_zeroes = bc.leading_zeros() / 4;
+        self.write(Self::GREY)?;
+        for _ in 0..num_leading_hex_zeroes {
+            self.write("0")?;
+        }
+        self.write(Self::COLOR_RESET)?;
 
-        let mut bc = self.byte_counter;
-        for i in 0..8 {
-            hex_line_no[7 - i] = b"0123456789abcdef"[bc & 0xf];
-            bc >>= 4;
+        // write the remaining hex digits
+        for i in num_leading_hex_zeroes..8 {
+            let n = bc >> (32 - i * 4 - 4);
+            let c = b"0123456789abcdef"[n as usize & 0xf];
+            self.writer.write_all(&[c])?;
         }
 
-        self.writer.write_all(&hex_line_no)
+        Ok(())
     }
 
     #[inline(always)]
