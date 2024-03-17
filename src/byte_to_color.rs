@@ -6,7 +6,7 @@ pub struct ByteToColor {
 }
 
 impl ByteToColor {
-    const BLACK: &'static str = "[30m";
+    const BLACK: &'static str = "[90m";
     // const RED: &'static str = "[31m";
     const GREEN: &'static str = "[32m";
     // const YELLOW: &'static str = "[33m";

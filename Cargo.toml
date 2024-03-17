@@ -13,4 +13,4 @@ term_size = "0.3.2"
 time = "0.3.34"
 
 [profile.release]
-debug = 1
+# debug = 1
