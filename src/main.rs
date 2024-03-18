@@ -86,7 +86,7 @@ fn run() -> std::io::Result<()> {
     let args: Args = Args::parse();
 
     // determine terminal size, and from that the number of bytes to print per line.
-    let line_writer = match args.num_bytes {
+    let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(num_bytes),
         None => LineWriter::new_max_width(term_size::dimensions().unwrap().0),
     };
