@@ -67,9 +67,9 @@ where
 
     // Calculates the maximum number of bytes allowed that fits into the given line width. Uses a minimum of 8 bytes.
     // also
-    pub fn new_max_width(writer: &'a mut T, max_width: &usize) -> Result<Self, &'static str> {
+    pub fn new_max_width(writer: &'a mut T, max_width: usize) -> Result<Self, &'static str> {
         let mut num_groups_of_8: usize = 1;
-        while 13 + (num_groups_of_8 + 1) * 33 <= *max_width {
+        while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
             num_groups_of_8 += 1;
         }
 

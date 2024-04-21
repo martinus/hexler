@@ -91,7 +91,7 @@ fn run() -> std::io::Result<()> {
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(&mut writer, num_bytes),
-        None => LineWriter::new_max_width(&mut writer, &term_size::dimensions().unwrap().0),
+        None => LineWriter::new_max_width(&mut writer, term_size::dimensions().unwrap().0),
     };
 
     let mut line_writer = line_writer.unwrap_or_else(|e| {
@@ -180,7 +180,7 @@ mod tests {
         let mut reader = std::io::Cursor::new(b"x");
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_max_width(&mut writer, &8).unwrap();
+        let mut line_writer = LineWriter::new_max_width(&mut writer, 8).unwrap();
         dump("Test", &mut reader, &mut line_writer).unwrap();
         println!("data={}", writer.to_utf8().unwrap());
     }
