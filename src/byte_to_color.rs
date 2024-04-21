@@ -65,13 +65,6 @@ impl ByteToColor {
                 unique_color_count
             });
             color_id[i as usize] = *val;
-
-            /*
-            if i % 32 == 0 {
-                print!("\n");
-            }
-            print!("{}", *val);
-            */
         }
 
         Self {

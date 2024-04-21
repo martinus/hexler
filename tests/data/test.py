@@ -5,7 +5,7 @@ for code in range(30, 38):
 print()
 for code in range(90, 98):
     sys.stdout.write(f"\u001b[{code}m{code} ")
-sys.stdout.write(f"\u001b[0m0 ")
+sys.stdout.write("\u001b[0m0 ")
 print()
 
 for i in range(0, 16):
