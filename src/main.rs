@@ -31,10 +31,10 @@ struct Args {
 
 // default format: 32 bytes per line
 // 001428d0: f30f 1efa 5548 89e5  4156 4154 5348 81ec  8800 0000 4c8b 364c  8b67 0864 488b 0425  ....UH..AVATSH......L.6L.g.dH..%
-fn dump<R: std::io::Read>(
+fn dump<R: std::io::Read, W: std::io::Write>(
     title: &str,
     mut reader: R,
-    line_writer: &mut LineWriter,
+    line_writer: &mut LineWriter<W>,
 ) -> std::io::Result<()> {
     // first, create a hex lookup table
     let mut buffer = [0u8; 4096];
@@ -71,7 +71,8 @@ fn dump<R: std::io::Read>(
 /**
  * This demo dumps the bytes 0 to 255 to stdout.
  */
-fn demo(line_writer: &mut LineWriter) -> std::io::Result<()> {
+#[allow(clippy::needless_range_loop)]
+fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> std::io::Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..256 {
         arr[i] = i as u8;
@@ -85,13 +86,15 @@ fn demo(line_writer: &mut LineWriter) -> std::io::Result<()> {
 fn run() -> std::io::Result<()> {
     let args: Args = Args::parse();
 
+    let mut writer = std::io::BufWriter::new(std::io::stdout());
+
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
-        Some(num_bytes) => LineWriter::new_bytes(num_bytes),
-        None => LineWriter::new_max_width(term_size::dimensions().unwrap().0),
+        Some(num_bytes) => LineWriter::new_bytes(&mut writer, num_bytes),
+        None => LineWriter::new_max_width(&mut writer, &term_size::dimensions().unwrap().0),
     };
 
-    let mut line_writer: LineWriter = line_writer.unwrap_or_else(|e| {
+    let mut line_writer = line_writer.unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
         std::process::exit(1);
     });
@@ -138,5 +141,47 @@ fn main() {
             eprintln!("Error: {err:?}");
             std::process::exit(1);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    pub struct BufferWriter {
+        data: Vec<u8>,
+    }
+
+    impl BufferWriter {
+        pub fn new() -> Self {
+            BufferWriter { data: vec![] }
+        }
+
+        pub fn to_utf8(&self) -> Result<&str, Utf8Error> {
+            std::str::from_utf8(&self.data)
+        }
+    }
+
+    impl std::io::Write for BufferWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.data.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    use std::str::Utf8Error;
+
+    use super::*;
+
+    #[test]
+    fn test_dump_empty() {
+        let mut reader = std::io::Cursor::new(b"x");
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_max_width(&mut writer, &8).unwrap();
+        dump("Test", &mut reader, &mut line_writer).unwrap();
+        println!("data={}", writer.to_utf8().unwrap());
     }
 }

@@ -1,8 +1,7 @@
 use crate::byte_to_color::ByteToColor;
-use std::io::prelude::*;
 
-pub struct LineWriter {
-    writer: std::io::BufWriter<std::io::Stdout>,
+pub struct LineWriter<'a, T: 'a> {
+    writer: &'a mut T,
     hex: [[u8; 3]; 256],
     byte_to_color: ByteToColor,
     bytes_per_line: usize,
@@ -14,7 +13,10 @@ pub enum Border {
     Footer,
 }
 
-impl LineWriter {
+impl<'a, T> LineWriter<'a, T>
+where
+    T: std::io::Write + 'a,
+{
     // https://de.wikipedia.org/wiki/Codepage_437
     #[rustfmt::skip]
     const CODE_PAGE_437: [&'static str; 256] = [
@@ -42,7 +44,7 @@ impl LineWriter {
     const GREY: &'static str = "[90m";
     const COLOR_RESET: &'static str = "[0m";
 
-    pub fn new_bytes(bytes_per_line: usize) -> Result<Self, &'static str> {
+    pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self, &'static str> {
         if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
             Err("num-bytes must be multiple of 8 and a minimum of 8")
         } else {
@@ -54,8 +56,8 @@ impl LineWriter {
                 hex[i][2] = b' '; // space
             }
             Ok(Self {
-                writer: std::io::BufWriter::new(std::io::stdout()),
-                byte_to_color: ByteToColor::new(),
+                writer,
+                byte_to_color: Default::default(),
                 hex,
                 bytes_per_line,
                 byte_counter: 0,
@@ -64,22 +66,22 @@ impl LineWriter {
     }
 
     // Calculates the maximum number of bytes allowed that fits into the given line width. Uses a minimum of 8 bytes.
-    pub fn new_max_width(max_width: usize) -> Result<Self, &'static str> {
+    // also
+    pub fn new_max_width(writer: &'a mut T, max_width: &usize) -> Result<Self, &'static str> {
         let mut num_groups_of_8: usize = 1;
-        while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
+        while 13 + (num_groups_of_8 + 1) * 33 <= *max_width {
             num_groups_of_8 += 1;
         }
 
-        Self::new_bytes(num_groups_of_8 * 8)
+        Self::new_bytes(writer, num_groups_of_8 * 8)
     }
 
     pub fn bytes_per_line(&self) -> usize {
-        return self.bytes_per_line;
+        self.bytes_per_line
     }
 
     // much faster version for this:
     // write!(&mut self.writer, "{:08x}", self.byte_counter)?;
-    // also
     fn write_hex_byte_offset(&mut self) -> std::io::Result<()> {
         // only show a 32bit number. Ought to be large enough for everyone
         let bc = self.byte_counter as u32;
@@ -137,6 +139,7 @@ impl LineWriter {
     // Writes hex lines, like so:
     //
     // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
+    #[allow(clippy::needless_range_loop)]
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         self.write_hex_byte_offset()?;
         self.write(" │")?;
@@ -148,25 +151,25 @@ impl LineWriter {
         for i in 0..self.bytes_per_line {
             // Add an additional space after 8 bytes
             if i % 8 == 0 {
-                self.writer.write_all(&Self::SPACE)?;
+                self.writer.write_all(Self::SPACE)?;
             }
             let hex = if i < bytes_in_buffer {
-                &self.hex[buffer[i] as usize]
+                self.hex[buffer[i] as usize]
             } else {
-                &Self::HEX_SPACE
+                Self::HEX_SPACE
             };
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
             if next_color_id != previous_color_id {
                 let col = self.byte_to_color.color(buffer[i]);
-                self.writer.write_all(&col.as_bytes())?;
+                self.writer.write_all(col.as_bytes())?;
                 previous_color_id = next_color_id;
             }
-            self.writer.write_all(hex)?;
+            self.writer.write_all(&hex)?;
         }
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
-            self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
+            self.writer.write_all(Self::COLOR_RESET.as_bytes())?;
             previous_color_id = 0;
         }
         self.writer.write_all("│ ".as_bytes())?;
@@ -175,7 +178,7 @@ impl LineWriter {
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
             if next_color_id != previous_color_id {
                 self.writer
-                    .write_all(&self.byte_to_color.color(buffer[i]).as_bytes())?;
+                    .write_all(self.byte_to_color.color(buffer[i]).as_bytes())?;
                 previous_color_id = next_color_id;
             }
             self.writer
@@ -184,9 +187,9 @@ impl LineWriter {
 
         // finished writing bytes, so reset color and finally go to the next line
         if previous_color_id != 0 {
-            self.writer.write_all(&Self::COLOR_RESET.as_bytes())?;
+            self.writer.write_all(Self::COLOR_RESET.as_bytes())?;
         }
-        self.writer.write_all(&Self::NEWLINE)?;
+        self.writer.write_all(Self::NEWLINE)?;
         Ok(())
     }
 

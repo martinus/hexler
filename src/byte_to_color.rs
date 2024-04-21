@@ -5,6 +5,12 @@ pub struct ByteToColor {
     color_id: [u8; 256],
 }
 
+impl Default for ByteToColor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ByteToColor {
     const GREY: &'static str = "[90m";
     // const RED: &'static str = "[31m";

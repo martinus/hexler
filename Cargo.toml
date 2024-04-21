@@ -19,3 +19,6 @@ time = "0.3.34"
 
 [profile.release]
 # debug = 1
+
+[profile.dev]
+debug = true
