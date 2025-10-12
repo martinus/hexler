@@ -1,5 +1,8 @@
+pub mod ascii_renderer;
+pub mod border_writer;
 pub mod byte_to_color;
 pub mod error;
+pub mod hex_formatter;
 pub mod line_writer;
 
 use chrono::{DateTime, Local};

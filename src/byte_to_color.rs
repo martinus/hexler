@@ -12,14 +12,14 @@ impl Default for ByteToColor {
 }
 
 impl ByteToColor {
-    const GREY: &'static str = "\x1b[90m";
-    // const RED: &'static str = "\x1b[31m";
-    const GREEN: &'static str = "\x1b[32m";
-    // const YELLOW: &'static str = "\x1b[33m";
-    const BLUE: &'static str = "\x1b[34m";
-    const MAGENTA: &'static str = "\x1b[35m";
-    // const CYAN: &'static str = "\x1b[36m";
-    // const WHITE: &'static str = "\x1b[37m";
+    const GREY: &'static str = "\x1b[90m"; // Bright black
+                                           // const RED: &'static str = "\x1b[91m"; // Bright red
+    const GREEN: &'static str = "\x1b[92m"; // Bright green
+                                            // const YELLOW: &'static str = "\x1b[93m"; // Bright yellow
+    const BLUE: &'static str = "\x1b[94m"; // Bright blue
+    const MAGENTA: &'static str = "\x1b[95m"; // Bright magenta
+                                              // const CYAN: &'static str = "\x1b[96m"; // Bright cyan
+                                              // const WHITE: &'static str = "\x1b[97m"; // Bright white
     const RESET: &'static str = "\x1b[0m";
     //const BOLD: &'static str = "\x1b[1m";
 
@@ -41,7 +41,7 @@ impl ByteToColor {
 
         for i in 0..=255u8 {
             let color = match i {
-                // NUL, 0xff
+                // NUL, DEL, 0xff
                 0x00 | 0x7f | 0xff => Self::GREY,
 
                 // whitespace
@@ -57,7 +57,7 @@ impl ByteToColor {
                 0x61..=0x7a => Self::RESET, // lowercase letters
 
                 // remaining high bytes
-                0x80..=0xff => Self::BLUE,
+                0x80..=0xfe => Self::BLUE,
             };
             colors[i as usize] = color;
             let val = color_to_id.entry(color).or_insert_with(|| {
@@ -168,14 +168,17 @@ mod tests {
         // Different colors should have different IDs
         let id_grey = btc.color_id(0x00);
         let id_green = btc.color_id(0x20);
-        assert_ne!(id_grey, id_green, "Different colors should have different IDs");
+        assert_ne!(
+            id_grey, id_green,
+            "Different colors should have different IDs"
+        );
     }
 
     #[test]
     fn test_default_trait() {
         let btc1 = ByteToColor::new();
         let btc2 = ByteToColor::default();
-        
+
         // Both should produce same colors
         assert_eq!(btc1.color(0x41), btc2.color(0x41));
         assert_eq!(btc1.color_id(0x41), btc2.color_id(0x41));
@@ -198,7 +201,12 @@ mod tests {
         for byte in 0..=255u8 {
             let color_id = btc.color_id(byte);
             // ID should be reasonable (not too many unique colors)
-            assert!(color_id < 10, "Color ID should be small, got {} for byte {:02x}", color_id, byte);
+            assert!(
+                color_id < 10,
+                "Color ID should be small, got {} for byte {:02x}",
+                color_id,
+                byte
+            );
         }
     }
 }
