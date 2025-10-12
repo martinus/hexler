@@ -1,4 +1,5 @@
 use crate::byte_to_color::ByteToColor;
+use crate::error::{HexlerError, Result};
 
 pub struct LineWriter<'a, T: 'a> {
     writer: &'a mut T,
@@ -44,9 +45,9 @@ where
     const GREY: &'static str = "[90m";
     const COLOR_RESET: &'static str = "[0m";
 
-    pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self, &'static str> {
+    pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
         if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
-            Err("num-bytes must be multiple of 8 and a minimum of 8")
+            Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
         } else {
             let mut hex = [[0u8; 3]; 256];
             for i in 0..256 {
@@ -66,8 +67,7 @@ where
     }
 
     // Calculates the maximum number of bytes allowed that fits into the given line width. Uses a minimum of 8 bytes.
-    // also
-    pub fn new_max_width(writer: &'a mut T, max_width: usize) -> Result<Self, &'static str> {
+    pub fn new_max_width(writer: &'a mut T, max_width: usize) -> Result<Self> {
         let mut num_groups_of_8: usize = 1;
         while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
             num_groups_of_8 += 1;

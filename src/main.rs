@@ -1,4 +1,5 @@
 pub mod byte_to_color;
+pub mod error;
 pub mod line_writer;
 
 use chrono::{DateTime, Local};
@@ -7,6 +8,7 @@ use size::Size;
 use std::fs;
 
 use clap::Parser;
+use error::{HexlerError, Result};
 use line_writer::LineWriter;
 
 #[derive(Parser, Debug)]
@@ -35,7 +37,7 @@ fn dump<R: std::io::Read, W: std::io::Write>(
     title: &str,
     mut reader: R,
     line_writer: &mut LineWriter<W>,
-) -> std::io::Result<()> {
+) -> Result<()> {
     // first, create a hex lookup table
     let mut buffer = [0u8; 4096];
 
@@ -65,14 +67,15 @@ fn dump<R: std::io::Read, W: std::io::Write>(
     line_writer.write_border(line_writer::Border::Footer, "")?;
 
     // make sure that the line writer is flushed to stdout before returning.
-    line_writer.flush()
+    line_writer.flush()?;
+    Ok(())
 }
 
 /**
  * This demo dumps the bytes 0 to 255 to stdout.
  */
 #[allow(clippy::needless_range_loop)]
-fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> std::io::Result<()> {
+fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..256 {
         arr[i] = i as u8;
@@ -83,7 +86,7 @@ fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> std::io::Result<(
     dump("demo, 256 bytes, 0 to 255", reader, line_writer)
 }
 
-fn run() -> std::io::Result<()> {
+fn run() -> Result<()> {
     let args: Args = Args::parse();
 
     let mut writer = std::io::BufWriter::new(std::io::stdout());
@@ -91,13 +94,15 @@ fn run() -> std::io::Result<()> {
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(&mut writer, num_bytes),
-        None => LineWriter::new_max_width(&mut writer, term_size::dimensions().unwrap().0),
+        None => {
+            let term_width = term_size::dimensions()
+                .ok_or(HexlerError::TerminalSizeError)?
+                .0;
+            LineWriter::new_max_width(&mut writer, term_width)
+        }
     };
 
-    let mut line_writer = line_writer.unwrap_or_else(|e| {
-        eprintln!("Error: {}", e);
-        std::process::exit(1);
-    });
+    let mut line_writer = line_writer?;
 
     // use less as the pager, much like git
     if !args.stdout {
@@ -137,10 +142,14 @@ fn run() -> std::io::Result<()> {
 fn main() {
     let result = run();
     if let Err(err) = result {
-        if err.kind() != std::io::ErrorKind::BrokenPipe {
-            eprintln!("Error: {err:?}");
-            std::process::exit(1);
+        // Ignore broken pipe errors (e.g., when piping to head)
+        if let HexlerError::Io(io_err) = &err {
+            if io_err.kind() == std::io::ErrorKind::BrokenPipe {
+                return;
+            }
         }
+        eprintln!("Error: {err}");
+        std::process::exit(1);
     }
 }
 
@@ -155,7 +164,7 @@ mod tests {
             BufferWriter { data: vec![] }
         }
 
-        pub fn to_utf8(&self) -> Result<&str, Utf8Error> {
+        pub fn to_utf8(&self) -> std::result::Result<&str, std::str::Utf8Error> {
             std::str::from_utf8(&self.data)
         }
     }
@@ -170,8 +179,6 @@ mod tests {
             Ok(())
         }
     }
-
-    use std::str::Utf8Error;
 
     use super::*;
 
