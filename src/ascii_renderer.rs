@@ -29,7 +29,7 @@ impl AsciiRenderer {
             "α", "ß", "Γ", "π", "Σ", "σ", "µ", "τ", "Φ", "Θ", "Ω", "δ", "∞", "φ", "ε", "∩", // e0-ef
             "≡", "±", "≥", "≤", "⌠", "⌡", "÷", "≈", "°", "∙", "·", "√", "ⁿ", "²", "■", "ﬀ", // f0-ff
         ];
-        
+
         Self { codepage_437 }
     }
 
@@ -84,7 +84,11 @@ mod tests {
         let renderer = AsciiRenderer::new();
         for byte in 0..=255u8 {
             let char = renderer.render(byte);
-            assert!(!char.is_empty(), "Byte {:02x} should have a representation", byte);
+            assert!(
+                !char.is_empty(),
+                "Byte {:02x} should have a representation",
+                byte
+            );
         }
     }
 

@@ -87,7 +87,7 @@ mod tests {
     fn test_write_header() {
         let mut output = Vec::new();
         BorderWriter::write_header(&mut output, "Test Header", 8).unwrap();
-        
+
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("Test Header"));
         assert!(result.contains("─"));
@@ -98,7 +98,7 @@ mod tests {
     fn test_write_footer() {
         let mut output = Vec::new();
         BorderWriter::write_footer(&mut output, "Test Footer", 8).unwrap();
-        
+
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("Test Footer"));
         assert!(result.contains("─"));
@@ -109,7 +109,7 @@ mod tests {
     fn test_empty_title() {
         let mut output = Vec::new();
         BorderWriter::write_header(&mut output, "", 8).unwrap();
-        
+
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("─"));
         assert!(result.contains("┬"));
@@ -125,6 +125,9 @@ mod tests {
         BorderWriter::write_header(&mut output, "Test", 32).unwrap();
         let len_32 = output.len();
 
-        assert!(len_32 > len_16, "32-byte width should produce longer border");
+        assert!(
+            len_32 > len_16,
+            "32-byte width should produce longer border"
+        );
     }
 }

@@ -2,7 +2,7 @@ use thiserror::Error;
 
 /// Error types for hexler operations.
 ///
-/// This enum uses the `thiserror` crate to provide automatic `Display` and `Error` 
+/// This enum uses the `thiserror` crate to provide automatic `Display` and `Error`
 /// trait implementations with descriptive error messages.
 #[derive(Error, Debug)]
 pub enum HexlerError {
@@ -65,7 +65,7 @@ mod tests {
     fn test_io_error_conversion() {
         let io_error = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let hexler_error: HexlerError = io_error.into();
-        
+
         let message = hexler_error.to_string();
         assert!(message.contains("IO error"));
         assert!(message.contains("file not found"));
@@ -84,7 +84,7 @@ mod tests {
         fn returns_result() -> Result<i32> {
             Ok(42)
         }
-        
+
         let result = returns_result();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 42);
@@ -95,7 +95,7 @@ mod tests {
         fn returns_error() -> Result<i32> {
             Err(HexlerError::TerminalSizeError)
         }
-        
+
         let result = returns_error();
         assert!(result.is_err());
     }

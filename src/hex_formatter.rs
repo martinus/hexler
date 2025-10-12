@@ -59,7 +59,7 @@ impl HexFormatter {
     ) -> std::io::Result<()> {
         let bc = offset as u32;
         let num_leading_hex_zeroes = bc.leading_zeros() / 4;
-        
+
         // Write leading zeros in grey
         writer.write_all(Self::GREY.as_bytes())?;
         for _ in 0..num_leading_hex_zeroes {
@@ -105,11 +105,11 @@ mod tests {
     fn test_write_offset() {
         let formatter = HexFormatter::new();
         let mut output = Vec::new();
-        
+
         formatter.write_offset(&mut output, 0).unwrap();
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("00000000"));
-        
+
         output.clear();
         formatter.write_offset(&mut output, 0x1234).unwrap();
         let result = String::from_utf8_lossy(&output);

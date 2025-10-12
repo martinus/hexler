@@ -204,7 +204,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
         dump("Multi-line test", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Multi-line test"));
         assert!(output.contains("00000000"));
@@ -220,7 +220,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
         dump("Partial", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Partial"));
         assert!(output.contains("48 65 6c 6c 6f")); // "Hello" in hex
@@ -229,15 +229,15 @@ mod tests {
     #[test]
     fn test_line_writer_invalid_bytes_per_line() {
         let mut writer = BufferWriter::new();
-        
+
         // Test less than minimum
         let result = LineWriter::new_bytes(&mut writer, 4);
         assert!(result.is_err());
-        
+
         // Test not multiple of 8
         let result = LineWriter::new_bytes(&mut writer, 12);
         assert!(result.is_err());
-        
+
         // Test valid values
         assert!(LineWriter::new_bytes(&mut writer, 8).is_ok());
         assert!(LineWriter::new_bytes(&mut writer, 16).is_ok());
@@ -247,11 +247,11 @@ mod tests {
     #[test]
     fn test_line_writer_max_width_calculation() {
         let mut writer = BufferWriter::new();
-        
+
         // Small width should give minimum bytes
         let line_writer = LineWriter::new_max_width(&mut writer, 50).unwrap();
         assert_eq!(line_writer.bytes_per_line(), 8);
-        
+
         // Larger width should give more bytes
         let line_writer = LineWriter::new_max_width(&mut writer, 150).unwrap();
         assert!(line_writer.bytes_per_line() >= 16);
@@ -273,7 +273,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
         dump("Various bytes", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Various bytes"));
         // Check for individual hex values (with potential ANSI codes between them)
@@ -293,7 +293,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
         dump("Border Test", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         // Check for border characters
         assert!(output.contains("─")); // horizontal line
@@ -310,7 +310,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
         dump("Empty", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Empty"));
         // Should still have borders even with no data
@@ -327,7 +327,7 @@ mod tests {
         let mut writer = BufferWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
         dump("Buffer boundary", &mut reader, &mut line_writer).unwrap();
-        
+
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Buffer boundary"));
     }

@@ -109,7 +109,8 @@ where
     #[allow(clippy::needless_range_loop)]
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         // Write hex offset
-        self.hex_formatter.write_offset(self.writer, self.byte_counter)?;
+        self.hex_formatter
+            .write_offset(self.writer, self.byte_counter)?;
         self.write(" │")?;
 
         self.byte_counter += bytes_in_buffer;
@@ -121,13 +122,13 @@ where
             if i % 8 == 0 {
                 self.writer.write_all(Self::SPACE)?;
             }
-            
+
             let hex = if i < bytes_in_buffer {
                 self.hex_formatter.hex_byte(buffer[i])
             } else {
                 HexFormatter::hex_space()
             };
-            
+
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
             if next_color_id != previous_color_id {
                 let col = self.byte_to_color.color(buffer[i]);
@@ -143,7 +144,7 @@ where
             previous_color_id = 0;
         }
         self.writer.write_all("│ ".as_bytes())?;
-        
+
         for i in 0..bytes_in_buffer {
             let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
             if next_color_id != previous_color_id {
@@ -208,10 +209,10 @@ mod tests {
         let mut writer = TestWriter::new();
         let result = LineWriter::new_bytes(&mut writer, 8);
         assert!(result.is_ok());
-        
+
         let result = LineWriter::new_bytes(&mut writer, 16);
         assert!(result.is_ok());
-        
+
         let result = LineWriter::new_bytes(&mut writer, 32);
         assert!(result.is_ok());
     }
@@ -228,7 +229,7 @@ mod tests {
         let mut writer = TestWriter::new();
         let result = LineWriter::new_bytes(&mut writer, 12);
         assert!(result.is_err());
-        
+
         let result = LineWriter::new_bytes(&mut writer, 20);
         assert!(result.is_err());
     }
@@ -244,8 +245,10 @@ mod tests {
     fn test_write_border_header() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        line_writer.write_border(Border::Header, "Test Header").unwrap();
-        
+        line_writer
+            .write_border(Border::Header, "Test Header")
+            .unwrap();
+
         let output = writer.to_string();
         assert!(output.contains("Test Header"));
         assert!(output.contains("─")); // horizontal border
@@ -256,8 +259,10 @@ mod tests {
     fn test_write_border_footer() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        line_writer.write_border(Border::Footer, "Test Footer").unwrap();
-        
+        line_writer
+            .write_border(Border::Footer, "Test Footer")
+            .unwrap();
+
         let output = writer.to_string();
         assert!(output.contains("Test Footer"));
         assert!(output.contains("─")); // horizontal border
@@ -268,10 +273,10 @@ mod tests {
     fn test_write_line_full() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        
+
         let buffer = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
         line_writer.write_line(&buffer, 8).unwrap();
-        
+
         let output = writer.to_string();
         // Hex values might have ANSI color codes between them
         assert!(output.contains("48"));
@@ -286,31 +291,31 @@ mod tests {
     fn test_write_line_partial() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
-        
+
         let mut buffer = [0u8; 16];
         buffer[0] = 0x41; // 'A'
         buffer[1] = 0x42; // 'B'
         buffer[2] = 0x43; // 'C'
-        
+
         line_writer.write_line(&buffer, 3).unwrap();
-        
+
         let output = writer.to_string();
         assert!(output.contains("41 42 43")); // The 3 bytes we wrote
-        // Should have spacing for remaining bytes
+                                              // Should have spacing for remaining bytes
     }
 
     #[test]
     fn test_write_line_increments_byte_counter() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        
+
         let buffer = [0u8; 8];
         line_writer.write_line(&buffer, 8).unwrap();
-        
+
         // Write another line - offset should have changed
         line_writer.write_line(&buffer, 8).unwrap();
         let output = writer.to_string();
-        
+
         // Should show first offset all zeros
         assert!(output.contains("00000000"));
         // The output has ANSI codes, so just check offset changes
@@ -323,10 +328,10 @@ mod tests {
     fn test_codepage_437_characters() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        
+
         let buffer = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
         line_writer.write_line(&buffer, 8).unwrap();
-        
+
         let output = writer.to_string();
         // Should contain codepage 437 representations
         assert!(output.contains("⋄")); // 0x00
@@ -357,10 +362,10 @@ mod tests {
     fn test_flush() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        
+
         let buffer = [0x41; 8];
         line_writer.write_line(&buffer, 8).unwrap();
-        
+
         // Flush should not error
         assert!(line_writer.flush().is_ok());
     }
@@ -369,10 +374,10 @@ mod tests {
     fn test_hex_offset_leading_zeros() {
         let mut writer = TestWriter::new();
         let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        
+
         let buffer = [0u8; 8];
         line_writer.write_line(&buffer, 8).unwrap();
-        
+
         let output = writer.to_string();
         // First line should have leading zeros
         assert!(output.contains("00000000"));
