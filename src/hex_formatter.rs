@@ -29,6 +29,7 @@ impl HexFormatter {
     ///
     /// # Example
     /// ```
+    /// use hexler::hex_formatter::HexFormatter;
     /// let formatter = HexFormatter::new();
     /// assert_eq!(formatter.hex_byte(0xff), b"ff ");
     /// assert_eq!(formatter.hex_byte(0x00), b"00 ");

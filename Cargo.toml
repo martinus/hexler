@@ -7,6 +7,14 @@ description = "A colorful hex printer with opinionated defaults"
 repository = "https://github.com/martinus/hexler"
 readme = "README.md"
 
+[lib]
+name = "hexler"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hexler"
+path = "src/main.rs"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

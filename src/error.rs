@@ -32,11 +32,13 @@ pub enum HexlerError {
 ///
 /// This simplifies function signatures throughout the codebase:
 /// ```
-/// fn process() -> Result<()> { ... }
+/// use hexler::error::Result;
+/// fn process() -> Result<()> { Ok(()) }
 /// ```
 /// instead of:
 /// ```
-/// fn process() -> std::result::Result<(), HexlerError> { ... }
+/// use hexler::error::HexlerError;
+/// fn process() -> std::result::Result<(), HexlerError> { Ok(()) }
 /// ```
 pub type Result<T> = std::result::Result<T, HexlerError>;
 
