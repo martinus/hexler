@@ -106,7 +106,6 @@ where
     /// # Arguments
     /// * `buffer` - Byte buffer to display (must be at least `bytes_in_buffer` long)
     /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
-    #[allow(clippy::needless_range_loop)]
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         // Write hex offset
         self.hex_formatter
@@ -117,25 +116,28 @@ where
 
         // Write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
-        for i in 0..self.bytes_per_line {
+        
+        // Process actual bytes
+        for (i, &byte) in buffer[..bytes_in_buffer].iter().enumerate() {
             // Add an additional space after 8 bytes
-            if i % 8 == 0 {
+            if i.is_multiple_of(8) {
                 self.writer.write_all(Self::SPACE)?;
             }
 
-            let hex = if i < bytes_in_buffer {
-                self.hex_formatter.hex_byte(buffer[i])
-            } else {
-                HexFormatter::hex_space()
-            };
-
-            let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
+            let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
-                let col = self.byte_to_color.color(buffer[i]);
-                self.writer.write_all(col.as_bytes())?;
+                self.writer.write_all(self.byte_to_color.color(byte).as_bytes())?;
                 previous_color_id = next_color_id;
             }
-            self.writer.write_all(hex)?;
+            self.writer.write_all(self.hex_formatter.hex_byte(byte))?;
+        }
+
+        // Fill remaining space with padding
+        for i in bytes_in_buffer..self.bytes_per_line {
+            if i.is_multiple_of(8) {
+                self.writer.write_all(Self::SPACE)?;
+            }
+            self.writer.write_all(HexFormatter::hex_space())?;
         }
 
         // Write codepage 437 characters
@@ -145,15 +147,15 @@ where
         }
         self.writer.write_all("│ ".as_bytes())?;
 
-        for i in 0..bytes_in_buffer {
-            let next_color_id: u8 = self.byte_to_color.color_id(buffer[i]);
+        for &byte in &buffer[..bytes_in_buffer] {
+            let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
                 self.writer
-                    .write_all(self.byte_to_color.color(buffer[i]).as_bytes())?;
+                    .write_all(self.byte_to_color.color(byte).as_bytes())?;
                 previous_color_id = next_color_id;
             }
             self.writer
-                .write_all(self.ascii_renderer.render(buffer[i]).as_bytes())?;
+                .write_all(self.ascii_renderer.render(byte).as_bytes())?;
         }
 
         // Finished writing bytes, so reset color and finally go to the next line

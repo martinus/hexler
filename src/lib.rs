@@ -49,9 +49,10 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
     mut reader: R,
     line_writer: &mut LineWriter<W>,
 ) -> Result<()> {
-    // first, create a hex lookup table
-    let mut buffer = [0u8; 4096];
+    const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB chunks for better I/O performance
+    let mut buffer = vec![0u8; READ_BUFFER_SIZE];
 
+    let bytes_per_line = line_writer.bytes_per_line();
     let mut num_bytes_in_line = 0;
     let mut line_buffer = [0u8; 1024];
 
@@ -63,18 +64,34 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
             break;
         }
 
-        // This loop is the most expensive part of this program.
-        // It writes the hex representation of the bytes
-        for byte in &buffer[..bytes_read] {
-            line_buffer[num_bytes_in_line] = *byte;
-            num_bytes_in_line += 1;
-            if num_bytes_in_line == line_writer.bytes_per_line() {
+        // Process bytes in chunks aligned to line boundaries for better cache locality
+        let data = &buffer[..bytes_read];
+        let mut offset = 0;
+
+        while offset < bytes_read {
+            let remaining_in_line = bytes_per_line - num_bytes_in_line;
+            let available = bytes_read - offset;
+            let to_copy = remaining_in_line.min(available);
+
+            // Copy bytes to line buffer
+            line_buffer[num_bytes_in_line..num_bytes_in_line + to_copy]
+                .copy_from_slice(&data[offset..offset + to_copy]);
+            
+            num_bytes_in_line += to_copy;
+            offset += to_copy;
+
+            if num_bytes_in_line == bytes_per_line {
                 line_writer.write_line(&line_buffer, num_bytes_in_line)?;
-                num_bytes_in_line = 0
+                num_bytes_in_line = 0;
             }
         }
     }
-    line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+    
+    // Write any remaining partial line
+    if num_bytes_in_line > 0 {
+        line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+    }
+    
     line_writer.write_border(line_writer::Border::Footer, "")?;
 
     // make sure that the line writer is flushed to stdout before returning.
