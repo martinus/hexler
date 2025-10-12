@@ -6,8 +6,10 @@
 * Defaults to using a pager (same as e.g. `git`)
 * Writes code page 437 characters for better readability
 
+![hexler screenshot](img/Screenshot_20251012_101602.png)
+
 I wrote this program mostly to get experience with Rust. There are more powerful tools (e.g. [hexyl](https://github.com/sharkdp/hexyl)) and
-faster ones (e.g. [hastyhex](https://github.com/skeeto/hastyhex)). Nevertheless, I prefer 
+faster ones (e.g. [hastyhex](https://github.com/skeeto/hastyhex)). Nevertheless, I prefer mine because of more reasonable colors and it is just prettier.
 
 ## Similar Programs
 
