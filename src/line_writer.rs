@@ -20,6 +20,7 @@ pub struct LineWriter<'a, T: 'a> {
     byte_to_color: ByteToColor,
     bytes_per_line: usize,
     byte_counter: usize,
+    line_buf: Vec<u8>,
 }
 
 /// Border type for headers and footers.
@@ -32,8 +33,6 @@ impl<'a, T> LineWriter<'a, T>
 where
     T: std::io::Write + 'a,
 {
-    const SPACE: &'static [u8] = b" ";
-    const NEWLINE: &'static [u8] = b"\n";
     const COLOR_RESET: &'static str = "\x1b[0m";
 
     /// Creates a new LineWriter with a specified number of bytes per line.
@@ -47,6 +46,8 @@ where
         if bytes_per_line < 8 || !bytes_per_line.is_multiple_of(8) {
             Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
         } else {
+            // Pre-allocate line buffer with generous capacity to avoid reallocations. In any case when more bytes are needed it grows automatically.
+            let line_buf = Vec::with_capacity(bytes_per_line * 10);
             Ok(Self {
                 writer,
                 hex_formatter: HexFormatter::new(),
@@ -54,6 +55,7 @@ where
                 byte_to_color: ByteToColor::new(),
                 bytes_per_line,
                 byte_counter: 0,
+                line_buf,
             })
         }
     }
@@ -79,11 +81,6 @@ where
         self.bytes_per_line
     }
 
-    #[inline(always)]
-    fn write(&mut self, text: &str) -> std::io::Result<()> {
-        self.writer.write_all(text.as_bytes())
-    }
-
     /// Writes a header or footer border with an optional title.
     pub fn write_border(&mut self, border: Border, title: &str) -> std::io::Result<()> {
         match border {
@@ -107,62 +104,72 @@ where
     /// * `buffer` - Byte buffer to display (must be at least `bytes_in_buffer` long)
     /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
+        // Clear the line buffer but keep allocated capacity for reuse
+        self.line_buf.clear();
+
         // Write hex offset
         self.hex_formatter
-            .write_offset(self.writer, self.byte_counter)?;
-        self.write(" │")?;
+            .write_offset(&mut self.line_buf, self.byte_counter);
+        self.line_buf.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
 
         self.byte_counter += bytes_in_buffer;
 
         // Write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
-        
+
         // Process actual bytes
         for (i, &byte) in buffer[..bytes_in_buffer].iter().enumerate() {
             // Add an additional space after 8 bytes
             if i.is_multiple_of(8) {
-                self.writer.write_all(Self::SPACE)?;
+                self.line_buf.push(b' ');
             }
 
             let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
-                self.writer.write_all(self.byte_to_color.color(byte).as_bytes())?;
+                self.line_buf
+                    .extend_from_slice(self.byte_to_color.color(byte).as_bytes());
                 previous_color_id = next_color_id;
             }
-            self.writer.write_all(self.hex_formatter.hex_byte(byte))?;
+            self.line_buf
+                .extend_from_slice(self.hex_formatter.hex_byte(byte));
         }
 
         // Fill remaining space with padding
         for i in bytes_in_buffer..self.bytes_per_line {
             if i.is_multiple_of(8) {
-                self.writer.write_all(Self::SPACE)?;
+                self.line_buf.push(b' ');
             }
-            self.writer.write_all(HexFormatter::hex_space())?;
+            self.line_buf.extend_from_slice(b"   "); // HexFormatter::hex_space()
         }
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
-            self.writer.write_all(Self::COLOR_RESET.as_bytes())?;
+            self.line_buf
+                .extend_from_slice(Self::COLOR_RESET.as_bytes());
             previous_color_id = 0;
         }
-        self.writer.write_all("│ ".as_bytes())?;
+        self.line_buf.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
 
         for &byte in &buffer[..bytes_in_buffer] {
             let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
-                self.writer
-                    .write_all(self.byte_to_color.color(byte).as_bytes())?;
+                self.line_buf
+                    .extend_from_slice(self.byte_to_color.color(byte).as_bytes());
                 previous_color_id = next_color_id;
             }
-            self.writer
-                .write_all(self.ascii_renderer.render(byte).as_bytes())?;
+            self.line_buf
+                .extend_from_slice(self.ascii_renderer.render(byte).as_bytes());
         }
 
         // Finished writing bytes, so reset color and finally go to the next line
         if previous_color_id != 0 {
-            self.writer.write_all(Self::COLOR_RESET.as_bytes())?;
+            self.line_buf
+                .extend_from_slice(Self::COLOR_RESET.as_bytes());
         }
-        self.writer.write_all(Self::NEWLINE)?;
+        self.line_buf.push(b'\n');
+
+        // Single write_all call for the entire line
+        self.writer.write_all(&self.line_buf)?;
         Ok(())
     }
 

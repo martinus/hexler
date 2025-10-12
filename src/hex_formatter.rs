@@ -43,38 +43,34 @@ impl HexFormatter {
         b"   "
     }
 
-    /// Writes a byte offset as 8 hex digits with leading zeros displayed in grey.
+    /// Writes a byte offset directly into a Vec<u8> buffer.
     ///
-    /// Leading zeros are rendered in grey color to improve readability by
-    /// de-emphasizing them. The significant digits remain in the default color.
+    /// Optimized version that appends directly to a Vec without going through Write trait.
     ///
     /// # Examples
     /// - `0x00000000` → grey "00000000"
     /// - `0x00001234` → grey "0000" + "1234"
     /// - `0x12345678` → "12345678" (no leading zeros)
-    pub fn write_offset<W: std::io::Write>(
-        &self,
-        writer: &mut W,
-        offset: usize,
-    ) -> std::io::Result<()> {
+    pub fn write_offset(&self, buf: &mut Vec<u8>, offset: usize) {
         let bc = offset as u32;
         let num_leading_hex_zeroes = bc.leading_zeros() / 4;
 
-        // Write leading zeros in grey
-        writer.write_all(Self::GREY.as_bytes())?;
-        for _ in 0..num_leading_hex_zeroes {
-            writer.write_all(b"0")?;
-        }
-        writer.write_all(Self::COLOR_RESET.as_bytes())?;
+        // Append grey color code
+        buf.extend_from_slice(Self::GREY.as_bytes());
 
-        // Write the remaining hex digits
+        // Append leading zeros
+        for _ in 0..num_leading_hex_zeroes {
+            buf.push(b'0');
+        }
+
+        // Append color reset
+        buf.extend_from_slice(Self::COLOR_RESET.as_bytes());
+
+        // Append the remaining hex digits
         for i in num_leading_hex_zeroes..8 {
             let n = bc >> (32 - i * 4 - 4);
-            let c = Self::HEX_CHARS[n as usize & 0xf];
-            writer.write_all(&[c])?;
+            buf.push(Self::HEX_CHARS[n as usize & 0xf]);
         }
-
-        Ok(())
     }
 }
 
@@ -106,14 +102,39 @@ mod tests {
         let formatter = HexFormatter::new();
         let mut output = Vec::new();
 
-        formatter.write_offset(&mut output, 0).unwrap();
+        // Test offset 0 - should have all leading zeros in grey
+        formatter.write_offset(&mut output, 0);
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("00000000"));
+        assert!(result.contains("\x1b[90m")); // Grey color code
+        assert!(result.contains("\x1b[0m")); // Reset code
 
+        // Test offset with some leading zeros
         output.clear();
-        formatter.write_offset(&mut output, 0x1234).unwrap();
+        formatter.write_offset(&mut output, 0x1234);
         let result = String::from_utf8_lossy(&output);
         assert!(result.contains("1234"));
+        // Should have grey section with "0000", then reset, then "1234"
+        assert!(result.ends_with("1234"));
+
+        // Test offset with no leading zeros (all 8 digits are significant)
+        output.clear();
+        formatter.write_offset(&mut output, 0x12345678);
+        let result = String::from_utf8_lossy(&output);
+        assert!(result.contains("12345678"));
+
+        // Test that max offset works
+        output.clear();
+        formatter.write_offset(&mut output, 0xFFFFFFFF);
+        let result = String::from_utf8_lossy(&output);
+        assert!(result.ends_with("ffffffff"));
+
+        // Test offset with single leading zero
+        output.clear();
+        formatter.write_offset(&mut output, 0x0FFFFFFF);
+        let result = String::from_utf8_lossy(&output);
+        assert!(result.ends_with("fffffff"));
+        assert!(result.contains("\x1b[90m0\x1b[0m")); // One grey zero
     }
 
     #[test]

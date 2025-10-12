@@ -76,7 +76,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
             // Copy bytes to line buffer
             line_buffer[num_bytes_in_line..num_bytes_in_line + to_copy]
                 .copy_from_slice(&data[offset..offset + to_copy]);
-            
+
             num_bytes_in_line += to_copy;
             offset += to_copy;
 
@@ -86,12 +86,12 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
             }
         }
     }
-    
+
     // Write any remaining partial line
     if num_bytes_in_line > 0 {
         line_writer.write_line(&line_buffer, num_bytes_in_line)?;
     }
-    
+
     line_writer.write_border(line_writer::Border::Footer, "")?;
 
     // make sure that the line writer is flushed to stdout before returning.
@@ -122,7 +122,7 @@ pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
 pub fn run() -> Result<()> {
     let args: Args = Args::parse();
 
-    let mut writer = std::io::BufWriter::new(std::io::stdout());
+    let mut writer = std::io::BufWriter::with_capacity(64 * 1024, std::io::stdout());
 
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
