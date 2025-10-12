@@ -1,9 +1,14 @@
-/// Handles rendering bytes as CodePage 437 characters
+/// Handles rendering bytes as CodePage 437 characters.
+///
+/// CodePage 437 is the character encoding used by the original IBM PC.
+/// It maps all 256 byte values to printable characters, including special
+/// symbols for control characters (0x00-0x1F) and extended ASCII (0x80-0xFF).
 pub struct AsciiRenderer {
     codepage_437: [&'static str; 256],
 }
 
 impl AsciiRenderer {
+    /// Creates a new AsciiRenderer with the full CodePage 437 character set.
     pub fn new() -> Self {
         #[rustfmt::skip]
         let codepage_437 = [
@@ -28,7 +33,13 @@ impl AsciiRenderer {
         Self { codepage_437 }
     }
 
-    /// Get the CodePage 437 character representation of a byte
+    /// Returns the CodePage 437 character representation of a byte.
+    ///
+    /// # Examples
+    /// - `0x00` (NUL) → "⋄"
+    /// - `0x41` (ASCII 'A') → "A"
+    /// - `0x80` → "Ç"
+    /// - `0xFF` → "ﬀ"
     pub fn render(&self, byte: u8) -> &str {
         self.codepage_437[byte as usize]
     }

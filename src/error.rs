@@ -1,22 +1,43 @@
 use thiserror::Error;
 
-/// Custom error type for hexler operations
+/// Error types for hexler operations.
+///
+/// This enum uses the `thiserror` crate to provide automatic `Display` and `Error` 
+/// trait implementations with descriptive error messages.
 #[derive(Error, Debug)]
 pub enum HexlerError {
-    /// Error when bytes per line is invalid
+    /// Invalid bytes_per_line value.
+    ///
+    /// The bytes_per_line parameter must be a multiple of 8 (to align with byte groups)
+    /// and at least 8 (minimum one group).
     #[error("bytes per line must be a multiple of 8 with a minimum of 8, got {0}")]
     InvalidBytesPerLine(usize),
 
-    /// IO errors
+    /// I/O operation failed.
+    ///
+    /// Automatically converts from `std::io::Error` via the `#[from]` attribute,
+    /// allowing `?` operator to work seamlessly with I/O operations.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// Terminal size error
+    /// Failed to determine terminal dimensions.
+    ///
+    /// This error occurs when the terminal size cannot be determined, which is needed
+    /// to calculate the optimal bytes_per_line value for the current terminal width.
     #[error("failed to determine terminal width")]
     TerminalSizeError,
 }
 
-/// Type alias for Results using HexlerError
+/// Type alias for Results that use `HexlerError` as the error type.
+///
+/// This simplifies function signatures throughout the codebase:
+/// ```
+/// fn process() -> Result<()> { ... }
+/// ```
+/// instead of:
+/// ```
+/// fn process() -> std::result::Result<(), HexlerError> { ... }
+/// ```
 pub type Result<T> = std::result::Result<T, HexlerError>;
 
 #[cfg(test)]

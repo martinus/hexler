@@ -4,7 +4,15 @@ use crate::byte_to_color::ByteToColor;
 use crate::error::{HexlerError, Result};
 use crate::hex_formatter::HexFormatter;
 
-/// Main line writer that orchestrates hex dump output
+/// Orchestrates the hex dump line output by coordinating specialized components.
+///
+/// This is the main component that brings together:
+/// - `HexFormatter`: Converts bytes to hexadecimal representation
+/// - `AsciiRenderer`: Renders bytes as CodePage 437 characters
+/// - `ByteToColor`: Assigns ANSI colors to bytes based on their type
+/// - `BorderWriter`: Draws Unicode borders for visual separation
+///
+/// Output format: `00000000 │ 7f 45 4c 46 ... │ ⌂ELF...`
 pub struct LineWriter<'a, T: 'a> {
     writer: &'a mut T,
     hex_formatter: HexFormatter,
@@ -14,6 +22,7 @@ pub struct LineWriter<'a, T: 'a> {
     byte_counter: usize,
 }
 
+/// Border type for headers and footers.
 pub enum Border {
     Header,
     Footer,
@@ -27,6 +36,13 @@ where
     const NEWLINE: &'static [u8] = b"\n";
     const COLOR_RESET: &'static str = "\x1b[0m";
 
+    /// Creates a new LineWriter with a specified number of bytes per line.
+    ///
+    /// # Arguments
+    /// * `bytes_per_line` - Must be a multiple of 8 (for proper alignment) and at least 8
+    ///
+    /// # Errors
+    /// Returns `InvalidBytesPerLine` if the value doesn't meet the requirements.
     pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
         if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
             Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
@@ -42,7 +58,13 @@ where
         }
     }
 
-    // Calculates the maximum number of bytes allowed that fits into the given line width. Uses a minimum of 8 bytes.
+    /// Creates a new LineWriter with the maximum bytes_per_line that fits within the given width.
+    ///
+    /// Calculates the optimal number of byte groups (8 bytes each) that fit within the
+    /// specified character width. Uses a minimum of 8 bytes (1 group).
+    ///
+    /// # Arguments
+    /// * `max_width` - Maximum line width in characters
     pub fn new_max_width(writer: &'a mut T, max_width: usize) -> Result<Self> {
         let mut num_groups_of_8: usize = 1;
         while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
@@ -52,6 +74,7 @@ where
         Self::new_bytes(writer, num_groups_of_8 * 8)
     }
 
+    /// Returns the number of bytes displayed per line.
     pub fn bytes_per_line(&self) -> usize {
         self.bytes_per_line
     }
@@ -61,6 +84,7 @@ where
         self.writer.write_all(text.as_bytes())
     }
 
+    /// Writes a header or footer border with an optional title.
     pub fn write_border(&mut self, border: Border, title: &str) -> std::io::Result<()> {
         match border {
             Border::Header => BorderWriter::write_header(self.writer, title, self.bytes_per_line),
@@ -68,9 +92,20 @@ where
         }
     }
 
-    // Writes hex lines, like so:
-    //
-    // 00000000 │ 7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  03 00 3e 00 01 00 00 00 │ ⌂ELF☻☺☺⋄⋄⋄⋄⋄⋄⋄⋄⋄♥⋄>⋄☺⋄⋄⋄
+    /// Writes a complete hex dump line with offset, hex bytes, and ASCII representation.
+    ///
+    /// Format: `00000000 │ 7f 45 4c 46 ... │ ⌂ELF...`
+    ///
+    /// The line has three sections:
+    /// 1. Offset (8 hex digits with grey leading zeros)
+    /// 2. Hex bytes (color-coded, grouped by 8)
+    /// 3. ASCII (CodePage 437 characters, color-coded)
+    ///
+    /// Colors are only written when they change to minimize output size.
+    ///
+    /// # Arguments
+    /// * `buffer` - Byte buffer to display (must be at least `bytes_in_buffer` long)
+    /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
     #[allow(clippy::needless_range_loop)]
     pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
         // Write hex offset
@@ -128,9 +163,12 @@ where
         Ok(())
     }
 
-    // From the docs: It is critical to call flush before BufWriter<W> is dropped. Though dropping will attempt to flush the contents of
-    // the buffer, any errors that happen in the process of dropping will be ignored. Calling flush ensures that the buffer is empty and
-    // thus dropping will not even attempt file operations.
+    /// Flushes the underlying writer to ensure all data is written.
+    ///
+    /// From the Rust docs: "It is critical to call flush before BufWriter<W> is dropped.
+    /// Though dropping will attempt to flush the contents of the buffer, any errors that
+    /// happen in the process of dropping will be ignored. Calling flush ensures that the
+    /// buffer is empty and thus dropping will not even attempt file operations."
     pub fn flush(&mut self) -> std::io::Result<()> {
         self.writer.flush()
     }

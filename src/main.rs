@@ -14,6 +14,7 @@ use clap::Parser;
 use error::{HexlerError, Result};
 use line_writer::LineWriter;
 
+/// Command-line arguments for hexler.
 #[derive(Parser, Debug)]
 #[command(author, version, about="A colorful hex printer with opinionated defaults", long_about = None)]
 struct Args {
@@ -34,8 +35,15 @@ struct Args {
     file: Option<std::path::PathBuf>,
 }
 
-// default format: 32 bytes per line
-// 001428d0: f30f 1efa 5548 89e5  4156 4154 5348 81ec  8800 0000 4c8b 364c  8b67 0864 488b 0425  ....UH..AVATSH......L.6L.g.dH..%
+/// Reads data from a reader and outputs a colored hex dump.
+///
+/// The data is read in 4KB chunks for efficiency, then processed byte-by-byte
+/// to build complete lines matching the configured bytes_per_line.
+///
+/// # Arguments
+/// * `title` - Header text to display (filename, "stdin", etc.)
+/// * `reader` - Data source to read from
+/// * `line_writer` - Configured line writer for output formatting
 fn dump<R: std::io::Read, W: std::io::Write>(
     title: &str,
     mut reader: R,
@@ -74,9 +82,7 @@ fn dump<R: std::io::Read, W: std::io::Write>(
     Ok(())
 }
 
-/**
- * This demo dumps the bytes 0 to 255 to stdout.
- */
+/// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
 fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
     let mut arr = [0u8; 256];
@@ -89,6 +95,13 @@ fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
     dump("demo, 256 bytes, 0 to 255", reader, line_writer)
 }
 
+/// Main application entry point - parses arguments and coordinates the hex dump output.
+///
+/// This function:
+/// 1. Parses command-line arguments
+/// 2. Determines terminal width and calculates optimal bytes_per_line (unless overridden)
+/// 3. Sets up a pager (less) for interactive viewing (unless --stdout is used)
+/// 4. Reads from a file or stdin and produces the hex dump
 fn run() -> Result<()> {
     let args: Args = Args::parse();
 
@@ -142,6 +155,11 @@ fn run() -> Result<()> {
     }
 }
 
+/// Program entry point with error handling.
+///
+/// Runs the main application and handles errors:
+/// - Ignores broken pipe errors (e.g., when output is piped to `head`)
+/// - Prints other errors to stderr and exits with code 1
 fn main() {
     let result = run();
     if let Err(err) = result {
@@ -158,6 +176,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    /// Test helper: A writer that stores output in a Vec<u8> for verification.
     pub struct BufferWriter {
         data: Vec<u8>,
     }

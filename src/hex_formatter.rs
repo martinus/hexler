@@ -1,4 +1,7 @@
-/// Handles hex formatting and byte offset display
+/// Handles hexadecimal formatting for bytes and file offsets.
+///
+/// Uses a pre-computed lookup table for fast hex conversion of all 256 possible byte values.
+/// Each byte is formatted as two hex digits plus a trailing space (e.g., "ff ").
 pub struct HexFormatter {
     hex_lookup: [[u8; 3]; 256],
 }
@@ -8,6 +11,10 @@ impl HexFormatter {
     const COLOR_RESET: &'static str = "\x1b[0m";
     const HEX_CHARS: &'static [u8] = b"0123456789abcdef";
 
+    /// Creates a new HexFormatter with pre-computed hex lookup table.
+    ///
+    /// The lookup table contains all 256 byte values as "XX " (two hex digits + space),
+    /// enabling O(1) hex conversion without runtime computation.
     pub fn new() -> Self {
         let mut hex_lookup = [[0u8; 3]; 256];
         for i in 0..256 {
@@ -18,17 +25,32 @@ impl HexFormatter {
         Self { hex_lookup }
     }
 
-    /// Get the hex representation of a byte with trailing space
+    /// Returns the hex representation of a byte as a 3-byte array: "XX ".
+    ///
+    /// # Example
+    /// ```
+    /// let formatter = HexFormatter::new();
+    /// assert_eq!(formatter.hex_byte(0xff), b"ff ");
+    /// assert_eq!(formatter.hex_byte(0x00), b"00 ");
+    /// ```
     pub fn hex_byte(&self, byte: u8) -> &[u8; 3] {
         &self.hex_lookup[byte as usize]
     }
 
-    /// Get hex space (three spaces) for padding
+    /// Returns three spaces "   " used for padding when a byte position is empty.
     pub fn hex_space() -> &'static [u8; 3] {
         &[b' ', b' ', b' ']
     }
 
-    /// Write a byte offset as 8 hex digits with leading zeros in grey
+    /// Writes a byte offset as 8 hex digits with leading zeros displayed in grey.
+    ///
+    /// Leading zeros are rendered in grey color to improve readability by
+    /// de-emphasizing them. The significant digits remain in the default color.
+    ///
+    /// # Examples
+    /// - `0x00000000` → grey "00000000"
+    /// - `0x00001234` → grey "0000" + "1234"
+    /// - `0x12345678` → "12345678" (no leading zeros)
     pub fn write_offset<W: std::io::Write>(
         &self,
         writer: &mut W,

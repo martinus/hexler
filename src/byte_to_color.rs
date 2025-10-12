@@ -12,23 +12,26 @@ impl Default for ByteToColor {
 }
 
 impl ByteToColor {
-    const GREY: &'static str = "\x1b[90m"; // Bright black
-                                           // const RED: &'static str = "\x1b[91m"; // Bright red
-    const GREEN: &'static str = "\x1b[92m"; // Bright green
-                                            // const YELLOW: &'static str = "\x1b[93m"; // Bright yellow
-    const BLUE: &'static str = "\x1b[94m"; // Bright blue
-    const MAGENTA: &'static str = "\x1b[95m"; // Bright magenta
-                                              // const CYAN: &'static str = "\x1b[96m"; // Bright cyan
-                                              // const WHITE: &'static str = "\x1b[97m"; // Bright white
-    const RESET: &'static str = "\x1b[0m";
-    //const BOLD: &'static str = "\x1b[1m";
+    // I'm using 256-color ANSI escape codes here because the terminal in VSCode has a bug with the normal colors:
+    // it doesn't use the correct brightness when the following character is a UTF-8 character.
 
-    // This Rust function, new(), initializes an array of colors (colors) and associates each byte value with a
-    // specific color. It creates the necessary mappings by iterating over all possible byte values from 0 to 255.
-    // The function assigns colors based on certain criteria such as NUL or whitespace characters, symbols, digits,
-    // uppercase letters, lowercase letters, and remaining high bytes.
-    //
-    // The color ID is stored in a separate array (color_id) for efficient lookup later
+    const GREY: &'static str = "\x1b[38;5;8m"; // 256-color grey for special bytes
+    const GREEN: &'static str = "\x1b[38;5;46m"; // 256-color bright green
+    const BLUE: &'static str = "\x1b[38;5;33m"; // 256-color bright blue
+    const MAGENTA: &'static str = "\x1b[38;5;201m"; // 256-color bright magenta
+    const RESET: &'static str = "\x1b[0m";
+
+    /// Creates a new ByteToColor instance with color mappings for all 256 byte values.
+    ///
+    /// Color assignments:
+    /// - NUL (0x00), DEL (0x7F), and 0xFF: Grey (special control bytes)
+    /// - Whitespace (LF, VT, FF, CR, SPACE): Green
+    /// - Symbols and control characters: Magenta
+    /// - Digits, letters: No color (reset)
+    /// - High bytes (0x80-0xFE): Blue (extended ASCII/CodePage 437)
+    ///
+    /// The color_id array stores unique identifiers for each color to enable
+    /// efficient color change detection when rendering.
     pub fn new() -> Self {
         let mut colors = [Self::RESET; 256];
         let mut color_id = [0u8; 256];
@@ -73,9 +76,15 @@ impl ByteToColor {
         }
     }
 
+    /// Returns the ANSI color escape code for the given byte.
     pub fn color(&self, byte: u8) -> &str {
         self.color_ary[byte as usize]
     }
+
+    /// Returns the color ID for the given byte.
+    ///
+    /// Color IDs are used to detect when the color changes between consecutive bytes,
+    /// allowing us to output ANSI color codes only when necessary.
     pub fn color_id(&self, byte: u8) -> u8 {
         self.color_id[byte as usize]
     }

@@ -1,4 +1,8 @@
-/// Handles drawing borders for the hex output
+/// Handles drawing Unicode box-drawing borders for the hex dump output.
+///
+/// Uses Unicode box-drawing characters to create visual separators:
+/// - Header: title on top, border below with ┬ connectors
+/// - Footer: border on top with ┴ connectors, title below
 pub struct BorderWriter;
 
 impl BorderWriter {
@@ -6,7 +10,9 @@ impl BorderWriter {
     const CONNECTOR_TOP: &'static str = "┬";
     const CONNECTOR_BOTTOM: &'static str = "┴";
 
-    /// Write a header border with a title
+    /// Writes a header border with an optional title above it.
+    ///
+    /// Format: `title\n─────┬─────┬─────\n`
     pub fn write_header<W: std::io::Write>(
         writer: &mut W,
         title: &str,
@@ -15,7 +21,9 @@ impl BorderWriter {
         Self::write_border(writer, title, bytes_per_line, Self::CONNECTOR_TOP, true)
     }
 
-    /// Write a footer border with a title
+    /// Writes a footer border with an optional title below it.
+    ///
+    /// Format: `─────┴─────┴─────\ntitle`
     pub fn write_footer<W: std::io::Write>(
         writer: &mut W,
         title: &str,
@@ -24,6 +32,12 @@ impl BorderWriter {
         Self::write_border(writer, title, bytes_per_line, Self::CONNECTOR_BOTTOM, false)
     }
 
+    /// Internal method to write a border line with proper spacing.
+    ///
+    /// The border is divided into three sections:
+    /// 1. Left: 9 characters for the offset column (8 hex digits + space)
+    /// 2. Middle: Variable length for hex bytes (groups of 8 bytes each)
+    /// 3. Right: Variable length for ASCII representation (bytes_per_line + 1)
     fn write_border<W: std::io::Write>(
         writer: &mut W,
         title: &str,
