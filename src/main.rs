@@ -126,7 +126,7 @@ fn run() -> Result<()> {
             }
 
             let title = format!(
-                "[1m{}[0m   {}   {}",
+                "\x1b[1m{}\x1b[0m   {}   {}",
                 file_name_str,
                 size,
                 modified_time.format("%-d %b %Y %H:%M:%S")

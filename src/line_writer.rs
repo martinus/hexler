@@ -42,8 +42,8 @@ where
     const SPACE: &'static [u8] = b" ";
     const NEWLINE: &'static [u8] = b"\n";
     const HEX_SPACE: [u8; 3] = [b' '; 3];
-    const GREY: &'static str = "[90m";
-    const COLOR_RESET: &'static str = "[0m";
+    const GREY: &'static str = "\x1b[90m";
+    const COLOR_RESET: &'static str = "\x1b[0m";
 
     pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
         if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
