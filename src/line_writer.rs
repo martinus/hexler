@@ -33,7 +33,7 @@ impl<'a, T> LineWriter<'a, T>
 where
     T: std::io::Write + 'a,
 {
-    const COLOR_RESET: &'static str = "\x1b[0m";
+    const COLOR_RESET: &'static [u8] = b"\x1b[0m";
 
     /// Creates a new LineWriter with a specified number of bytes per line.
     ///
@@ -43,7 +43,8 @@ where
     /// # Errors
     /// Returns `InvalidBytesPerLine` if the value doesn't meet the requirements.
     pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
-        if bytes_per_line < 8 || !bytes_per_line.is_multiple_of(8) {
+        if bytes_per_line < 8 || bytes_per_line & 7 != 0 {
+            // Faster than is_multiple_of(8)
             Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
         } else {
             // Pre-allocate line buffer with generous capacity to avoid reallocations. In any case when more bytes are needed it grows automatically.
@@ -137,17 +138,18 @@ where
         }
 
         // Fill remaining space with padding
-        for i in bytes_in_buffer..self.bytes_per_line {
-            if i.is_multiple_of(8) {
+        let padding_count = self.bytes_per_line - bytes_in_buffer;
+        for _ in 0..padding_count {
+            if group_counter == 0 {
                 self.line_buf.push(b' ');
             }
+            group_counter = (group_counter + 1) & 7; // Faster than %8 or is_multiple_of(8)
             self.line_buf.extend_from_slice(b"   "); // HexFormatter::hex_space()
         }
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
-            self.line_buf
-                .extend_from_slice(Self::COLOR_RESET.as_bytes());
+            self.line_buf.extend_from_slice(Self::COLOR_RESET);
             previous_color_id = 0;
         }
         self.line_buf.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
@@ -160,13 +162,12 @@ where
                 previous_color_id = next_color_id;
             }
             self.line_buf
-                .extend_from_slice(self.ascii_renderer.render(byte).as_bytes());
+                .extend_from_slice(self.ascii_renderer.render_bytes(byte));
         }
 
         // Finished writing bytes, so reset color and finally go to the next line
         if previous_color_id != 0 {
-            self.line_buf
-                .extend_from_slice(Self::COLOR_RESET.as_bytes());
+            self.line_buf.extend_from_slice(Self::COLOR_RESET);
         }
         self.line_buf.push(b'\n');
 

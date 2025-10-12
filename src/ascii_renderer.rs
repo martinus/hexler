@@ -4,7 +4,7 @@
 /// It maps all 256 byte values to printable characters, including special
 /// symbols for control characters (0x00-0x1F) and extended ASCII (0x80-0xFF).
 pub struct AsciiRenderer {
-    codepage_437: [&'static str; 256],
+    codepage_437_bytes: [&'static [u8]; 256], // Pre-computed bytes for performance
 }
 
 impl AsciiRenderer {
@@ -30,18 +30,19 @@ impl AsciiRenderer {
             "≡", "±", "≥", "≤", "⌠", "⌡", "÷", "≈", "°", "∙", "·", "√", "ⁿ", "²", "■", "ﬀ", // f0-ff
         ];
 
-        Self { codepage_437 }
+        let mut codepage_437_bytes = ["".as_bytes(); 256];
+        for i in 0..256 {
+            codepage_437_bytes[i] = codepage_437[i].as_bytes();
+        }
+
+        Self { codepage_437_bytes }
     }
 
-    /// Returns the CodePage 437 character representation of a byte.
-    ///
-    /// # Examples
-    /// - `0x00` (NUL) → "⋄"
-    /// - `0x41` (ASCII 'A') → "A"
-    /// - `0x80` → "Ç"
-    /// - `0xFF` → "ﬀ"
-    pub fn render(&self, byte: u8) -> &str {
-        self.codepage_437[byte as usize]
+    /// Returns the CodePage 437 character representation as bytes.
+    /// This is more efficient than calling render().as_bytes() in hot loops.
+    #[inline]
+    pub fn render_bytes(&self, byte: u8) -> &'static [u8] {
+        self.codepage_437_bytes[byte as usize]
     }
 }
 
@@ -55,35 +56,41 @@ impl Default for AsciiRenderer {
 mod tests {
     use super::*;
 
+    // Helper function for tests to get character as &str
+    fn render(renderer: &AsciiRenderer, byte: u8) -> &str {
+        // Safe because codepage_437_bytes always contains valid UTF-8
+        unsafe { std::str::from_utf8_unchecked(renderer.render_bytes(byte)) }
+    }
+
     #[test]
     fn test_control_characters() {
         let renderer = AsciiRenderer::new();
-        assert_eq!(renderer.render(0x00), "⋄"); // NUL
-        assert_eq!(renderer.render(0x01), "☺"); // SOH
-        assert_eq!(renderer.render(0x02), "☻"); // STX
+        assert_eq!(render(&renderer, 0x00), "⋄"); // NUL
+        assert_eq!(render(&renderer, 0x01), "☺"); // SOH
+        assert_eq!(render(&renderer, 0x02), "☻"); // STX
     }
 
     #[test]
     fn test_printable_ascii() {
         let renderer = AsciiRenderer::new();
-        assert_eq!(renderer.render(0x20), " "); // space
-        assert_eq!(renderer.render(0x41), "A");
-        assert_eq!(renderer.render(0x61), "a");
-        assert_eq!(renderer.render(0x30), "0");
+        assert_eq!(render(&renderer, 0x20), " "); // space
+        assert_eq!(render(&renderer, 0x41), "A");
+        assert_eq!(render(&renderer, 0x61), "a");
+        assert_eq!(render(&renderer, 0x30), "0");
     }
 
     #[test]
     fn test_extended_ascii() {
         let renderer = AsciiRenderer::new();
-        assert_eq!(renderer.render(0x80), "Ç");
-        assert_eq!(renderer.render(0xff), "ﬀ");
+        assert_eq!(render(&renderer, 0x80), "Ç");
+        assert_eq!(render(&renderer, 0xff), "ﬀ");
     }
 
     #[test]
     fn test_all_bytes_have_representation() {
         let renderer = AsciiRenderer::new();
         for byte in 0..=255u8 {
-            let char = renderer.render(byte);
+            let char = render(&renderer, byte);
             assert!(
                 !char.is_empty(),
                 "Byte {:02x} should have a representation",
@@ -96,6 +103,6 @@ mod tests {
     fn test_default_trait() {
         let renderer1 = AsciiRenderer::new();
         let renderer2 = AsciiRenderer::default();
-        assert_eq!(renderer1.render(0x41), renderer2.render(0x41));
+        assert_eq!(render(&renderer1, 0x41), render(&renderer2, 0x41));
     }
 }
