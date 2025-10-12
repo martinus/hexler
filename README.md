@@ -1,50 +1,76 @@
-# hexler - A colorful hex printer with opinionated defaults
+# hexler
 
-`hexler` is a simple hex viewer. Its most distinguishing features are:
-* Automatically uses whole terminal width
-* colorized output
-* Defaults to using a pager (same as e.g. `git`)
-* Writes code page 437 characters for better readability
+A colorful hex viewer with sensible defaults and terminal-friendly output.
 
 ![hexler screenshot](img/Screenshot_20251012_101602.png)
 
-I wrote this program mostly to get experience with Rust. There are more powerful tools (e.g. [hexyl](https://github.com/sharkdp/hexyl)) and
-faster ones (e.g. [hastyhex](https://github.com/skeeto/hastyhex)). Nevertheless, I prefer mine because of more reasonable colors and it is just prettier.
+## Features
 
-## Similar Programs
+- **Terminal-aware**: Automatically adjusts to full terminal width
+- **Colorized output**: Easy-to-read syntax highlighting for different byte types  
+- **Pager integration**: Uses your system pager by default (like `git` and `man`)
+- **Enhanced readability**: Displays CP437 characters for better visual parsing
 
-* TSCD https://github.com/fosres/TSCD
-  * Red: non-printable
-  * Orange: printable (Alphabetic)
-  * Yellow: Base 10 digits
-  * Green: ASCII Whitespace
-  * Purple: Punctuation Characters
-  * Gray: NUL
-* hastyhex https://github.com/skeeto/hastyhex
-  * green: Whitespace (0a, 0b, 0c, 0d, 20)
-  * Blue: printable (21-7e)
-  * yellow: nonprintable
-  * gray: NUL
-* hexxy https://github.com/sweetbbak/hexxy
-  * 256 different colors
-* xxd 
-  * some colorization
-* xd https://bitbucket.org/delan/xd/src/default/
-  * gray & whilte
-  * prints ALL characters!
-  * xd --example
-* hexyl https://github.com/sharkdp/hexyl
-  * looks powerful, and beautiful!
+## Why hexler?
 
-## Number of bytes written when printing a random binary
+While excellent tools like [hexyl](https://github.com/sharkdp/hexyl) and [hastyhex](https://github.com/skeeto/hastyhex) exist, hexler focuses on practical everyday use with reasonable defaults. Originally created as a Rust learning project, it's evolved into my go-to hex viewer for its clean output and terminal integration.
 
-Printing a 181 MB executable, tested with e.g. `time hexler --stdout filename >/dev/null` or `|wc -c`
+## Installation
 
-| MB to console | Runtime | app      | sampe output                                                                       |
-|--------------:|--------:|----------|------------------------------------------------------------------------------------|
-|          2004 |   2.210 | hexler   | `00004e80:  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b`    |
-|          2729 |   1.002 | hastyhex | `00004e80  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b`     |
-|          2745 |  24.213 | hexyl    | `│00004e80│ 74 72 45 76 00 5f 5a 4e ┊ 53 74 38 69 6f 73 5f 62 │trEv⋄_ZN┊St8ios_b│` |
-|          4195 |   4.371 | hexxy    | `0004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b`               |
-|          4757 |   5.354 | xxd      | `00004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b`              |
-|          8598 |  24.213 | tscd     | `00004e80:  74 72 45 76 00 5f 5a 4e 53 74 38 69 6f 73 5f 62  trEv·_ZNSt8ios_b`     |
+```bash
+# Build from source
+git clone https://github.com/martinus/hexler.git
+cd hexler
+cargo build --release
+```
+
+The binary will be available at `target/release/hexler`.
+
+## Usage
+
+```bash
+# View a file with pager
+hexler file.bin
+
+# Output directly to stdout  
+hexler --stdout file.bin
+
+# Pipe to hexler
+cat file.bin | hexler
+```
+
+## Performance Benchmark
+
+Output size and runtime when processing a 181 MB executable (tested with `time hexler --stdout filename >/dev/null`):
+
+| Output (MB) | Runtime (s) | Tool     | Sample Output |
+|------------:|------------:|----------|---------------|
+|        2004 |       2.210 | hexler   | `00004e80:  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b` |
+|        2729 |       1.002 | hastyhex | `00004e80  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b` |
+|        2745 |      24.213 | hexyl    | `│00004e80│ 74 72 45 76 00 5f 5a 4e ┊ 53 74 38 69 6f 73 5f 62 │trEv⋄_ZN┊St8ios_b│` |
+|        4195 |       4.371 | hexxy    | `0004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b` |
+|        4757 |       5.354 | xxd      | `00004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b` |
+|        8598 |      24.213 | tscd     | `00004e80:  74 72 45 76 00 5f 5a 4e 53 74 38 69 6f 73 5f 62  trEv·_ZNSt8ios_b` |
+
+
+## Comparison with Similar Tools
+
+### Color Schemes
+
+**TSCD** ([repo](https://github.com/fosres/TSCD))
+- Red: non-printable • Orange: alphabetic • Yellow: digits • Green: whitespace • Purple: punctuation • Gray: NUL
+
+**hastyhex** ([repo](https://github.com/skeeto/hastyhex))  
+- Green: whitespace (0a, 0b, 0c, 0d, 20) • Blue: printable (21-7e) • Yellow: non-printable • Gray: NUL
+
+**hexxy** ([repo](https://github.com/sweetbbak/hexxy))
+- 256 different colors
+
+**xxd** (system tool)
+- Basic colorization
+
+**xd** ([repo](https://bitbucket.org/delan/xd/src/default/))
+- Gray & white theme • Prints ALL characters
+
+**hexyl** ([repo](https://github.com/sharkdp/hexyl))
+- Feature-rich with beautiful output
