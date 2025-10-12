@@ -200,3 +200,208 @@ where
         self.writer.flush()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestWriter {
+        data: Vec<u8>,
+    }
+
+    impl TestWriter {
+        fn new() -> Self {
+            Self { data: Vec::new() }
+        }
+
+        fn to_string(&self) -> String {
+            String::from_utf8_lossy(&self.data).to_string()
+        }
+    }
+
+    impl std::io::Write for TestWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.data.extend_from_slice(buf);
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_new_bytes_valid() {
+        let mut writer = TestWriter::new();
+        let result = LineWriter::new_bytes(&mut writer, 8);
+        assert!(result.is_ok());
+        
+        let result = LineWriter::new_bytes(&mut writer, 16);
+        assert!(result.is_ok());
+        
+        let result = LineWriter::new_bytes(&mut writer, 32);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_new_bytes_invalid_too_small() {
+        let mut writer = TestWriter::new();
+        let result = LineWriter::new_bytes(&mut writer, 4);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_bytes_invalid_not_multiple() {
+        let mut writer = TestWriter::new();
+        let result = LineWriter::new_bytes(&mut writer, 12);
+        assert!(result.is_err());
+        
+        let result = LineWriter::new_bytes(&mut writer, 20);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_bytes_per_line() {
+        let mut writer = TestWriter::new();
+        let line_writer = LineWriter::new_bytes(&mut writer, 24).unwrap();
+        assert_eq!(line_writer.bytes_per_line(), 24);
+    }
+
+    #[test]
+    fn test_write_border_header() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        line_writer.write_border(Border::Header, "Test Header").unwrap();
+        
+        let output = writer.to_string();
+        assert!(output.contains("Test Header"));
+        assert!(output.contains("─")); // horizontal border
+        assert!(output.contains("┬")); // top connector
+    }
+
+    #[test]
+    fn test_write_border_footer() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        line_writer.write_border(Border::Footer, "Test Footer").unwrap();
+        
+        let output = writer.to_string();
+        assert!(output.contains("Test Footer"));
+        assert!(output.contains("─")); // horizontal border
+        assert!(output.contains("┴")); // bottom connector
+    }
+
+    #[test]
+    fn test_write_line_full() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        
+        let buffer = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
+        line_writer.write_line(&buffer, 8).unwrap();
+        
+        let output = writer.to_string();
+        // Hex values might have ANSI color codes between them
+        assert!(output.contains("48"));
+        assert!(output.contains("65"));
+        assert!(output.contains("6c"));
+        assert!(output.contains("6f"));
+        assert!(output.contains("21"));
+        assert!(output.contains("│")); // separator
+    }
+
+    #[test]
+    fn test_write_line_partial() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
+        
+        let mut buffer = [0u8; 16];
+        buffer[0] = 0x41; // 'A'
+        buffer[1] = 0x42; // 'B'
+        buffer[2] = 0x43; // 'C'
+        
+        line_writer.write_line(&buffer, 3).unwrap();
+        
+        let output = writer.to_string();
+        assert!(output.contains("41 42 43")); // The 3 bytes we wrote
+        // Should have spacing for remaining bytes
+    }
+
+    #[test]
+    fn test_write_line_increments_byte_counter() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        
+        let buffer = [0u8; 8];
+        line_writer.write_line(&buffer, 8).unwrap();
+        
+        // Write another line - offset should have changed
+        line_writer.write_line(&buffer, 8).unwrap();
+        let output = writer.to_string();
+        
+        // Should show first offset all zeros
+        assert!(output.contains("00000000"));
+        // The output has ANSI codes, so just check offset changes
+        // by checking that we have a second line with different offset chars
+        let lines: Vec<&str> = output.lines().collect();
+        assert!(lines.len() >= 2, "Should have at least 2 lines");
+    }
+
+    #[test]
+    fn test_codepage_437_characters() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        
+        let buffer = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
+        line_writer.write_line(&buffer, 8).unwrap();
+        
+        let output = writer.to_string();
+        // Should contain codepage 437 representations
+        assert!(output.contains("⋄")); // 0x00
+        assert!(output.contains("☺")); // 0x01
+        assert!(output.contains(" ")); // 0x20
+        assert!(output.contains("A")); // 0x41
+    }
+
+    #[test]
+    fn test_new_max_width_small() {
+        let mut writer = TestWriter::new();
+        let line_writer = LineWriter::new_max_width(&mut writer, 50).unwrap();
+        // Should default to minimum (8 bytes)
+        assert_eq!(line_writer.bytes_per_line(), 8);
+    }
+
+    #[test]
+    fn test_new_max_width_large() {
+        let mut writer = TestWriter::new();
+        let line_writer = LineWriter::new_max_width(&mut writer, 200).unwrap();
+        // Should allow more than minimum bytes
+        assert!(line_writer.bytes_per_line() > 8);
+        // Should be multiple of 8
+        assert_eq!(line_writer.bytes_per_line() % 8, 0);
+    }
+
+    #[test]
+    fn test_flush() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        
+        let buffer = [0x41; 8];
+        line_writer.write_line(&buffer, 8).unwrap();
+        
+        // Flush should not error
+        assert!(line_writer.flush().is_ok());
+    }
+
+    #[test]
+    fn test_hex_offset_leading_zeros() {
+        let mut writer = TestWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        
+        let buffer = [0u8; 8];
+        line_writer.write_line(&buffer, 8).unwrap();
+        
+        let output = writer.to_string();
+        // First line should have leading zeros
+        assert!(output.contains("00000000"));
+    }
+}

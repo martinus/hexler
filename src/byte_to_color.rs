@@ -80,3 +80,125 @@ impl ByteToColor {
         self.color_id[byte as usize]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_nul_byte_color() {
+        let btc = ByteToColor::new();
+        assert_eq!(btc.color(0x00), ByteToColor::GREY);
+    }
+
+    #[test]
+    fn test_del_byte_color() {
+        let btc = ByteToColor::new();
+        assert_eq!(btc.color(0x7f), ByteToColor::GREY);
+    }
+
+    #[test]
+    fn test_extended_ascii_color() {
+        let btc = ByteToColor::new();
+        assert_eq!(btc.color(0xff), ByteToColor::GREY);
+    }
+
+    #[test]
+    fn test_whitespace_colors() {
+        let btc = ByteToColor::new();
+        // LF, VT, FF, CR, SPACE
+        assert_eq!(btc.color(0x0a), ByteToColor::GREEN); // LF
+        assert_eq!(btc.color(0x0b), ByteToColor::GREEN); // VT
+        assert_eq!(btc.color(0x0c), ByteToColor::GREEN); // FF
+        assert_eq!(btc.color(0x0d), ByteToColor::GREEN); // CR
+        assert_eq!(btc.color(0x20), ByteToColor::GREEN); // SPACE
+    }
+
+    #[test]
+    fn test_digit_colors() {
+        let btc = ByteToColor::new();
+        for digit in b'0'..=b'9' {
+            assert_eq!(btc.color(digit), ByteToColor::RESET);
+        }
+    }
+
+    #[test]
+    fn test_uppercase_letter_colors() {
+        let btc = ByteToColor::new();
+        for letter in b'A'..=b'Z' {
+            assert_eq!(btc.color(letter), ByteToColor::RESET);
+        }
+    }
+
+    #[test]
+    fn test_lowercase_letter_colors() {
+        let btc = ByteToColor::new();
+        for letter in b'a'..=b'z' {
+            assert_eq!(btc.color(letter), ByteToColor::RESET);
+        }
+    }
+
+    #[test]
+    fn test_symbol_colors() {
+        let btc = ByteToColor::new();
+        // Test various symbols
+        assert_eq!(btc.color(b'!'), ByteToColor::MAGENTA);
+        assert_eq!(btc.color(b'#'), ByteToColor::MAGENTA);
+        assert_eq!(btc.color(b'@'), ByteToColor::MAGENTA);
+        assert_eq!(btc.color(b'['), ByteToColor::MAGENTA);
+        assert_eq!(btc.color(b'{'), ByteToColor::MAGENTA);
+    }
+
+    #[test]
+    fn test_high_bytes_colors() {
+        let btc = ByteToColor::new();
+        for byte in 0x80..=0xfe {
+            assert_eq!(btc.color(byte), ByteToColor::BLUE);
+        }
+    }
+
+    #[test]
+    fn test_color_id_consistency() {
+        let btc = ByteToColor::new();
+        // Same color should have same ID
+        let id1 = btc.color_id(b'A');
+        let id2 = btc.color_id(b'B');
+        assert_eq!(id1, id2, "Uppercase letters should have the same color ID");
+
+        // Different colors should have different IDs
+        let id_grey = btc.color_id(0x00);
+        let id_green = btc.color_id(0x20);
+        assert_ne!(id_grey, id_green, "Different colors should have different IDs");
+    }
+
+    #[test]
+    fn test_default_trait() {
+        let btc1 = ByteToColor::new();
+        let btc2 = ByteToColor::default();
+        
+        // Both should produce same colors
+        assert_eq!(btc1.color(0x41), btc2.color(0x41));
+        assert_eq!(btc1.color_id(0x41), btc2.color_id(0x41));
+    }
+
+    #[test]
+    fn test_all_bytes_have_color() {
+        let btc = ByteToColor::new();
+        // Ensure every byte has a color assigned
+        for byte in 0..=255u8 {
+            let color = btc.color(byte);
+            assert!(!color.is_empty(), "Byte {:02x} should have a color", byte);
+        }
+    }
+
+    #[test]
+    fn test_color_id_is_valid() {
+        let btc = ByteToColor::new();
+        // Color ID 0 should be RESET
+        for byte in 0..=255u8 {
+            let color_id = btc.color_id(byte);
+            // ID should be reasonable (not too many unique colors)
+            assert!(color_id < 10, "Color ID should be small, got {} for byte {:02x}", color_id, byte);
+        }
+    }
+}

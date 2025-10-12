@@ -191,4 +191,141 @@ mod tests {
         dump("Test", &mut reader, &mut line_writer).unwrap();
         println!("data={}", writer.to_utf8().unwrap());
     }
+
+    #[test]
+    fn test_dump_multiple_lines() {
+        // Test data that spans multiple lines
+        let test_data: Vec<u8> = (0..=255).collect();
+        let mut reader = std::io::Cursor::new(&test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
+        dump("Multi-line test", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        assert!(output.contains("Multi-line test"));
+        assert!(output.contains("00000000"));
+        assert!(output.contains("f0")); // Last line contains f0
+    }
+
+    #[test]
+    fn test_dump_partial_line() {
+        // Test data that doesn't fill a complete line
+        let test_data = b"Hello";
+        let mut reader = std::io::Cursor::new(test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
+        dump("Partial", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        assert!(output.contains("Partial"));
+        assert!(output.contains("48 65 6c 6c 6f")); // "Hello" in hex
+    }
+
+    #[test]
+    fn test_line_writer_invalid_bytes_per_line() {
+        let mut writer = BufferWriter::new();
+        
+        // Test less than minimum
+        let result = LineWriter::new_bytes(&mut writer, 4);
+        assert!(result.is_err());
+        
+        // Test not multiple of 8
+        let result = LineWriter::new_bytes(&mut writer, 12);
+        assert!(result.is_err());
+        
+        // Test valid values
+        assert!(LineWriter::new_bytes(&mut writer, 8).is_ok());
+        assert!(LineWriter::new_bytes(&mut writer, 16).is_ok());
+        assert!(LineWriter::new_bytes(&mut writer, 24).is_ok());
+    }
+
+    #[test]
+    fn test_line_writer_max_width_calculation() {
+        let mut writer = BufferWriter::new();
+        
+        // Small width should give minimum bytes
+        let line_writer = LineWriter::new_max_width(&mut writer, 50).unwrap();
+        assert_eq!(line_writer.bytes_per_line(), 8);
+        
+        // Larger width should give more bytes
+        let line_writer = LineWriter::new_max_width(&mut writer, 150).unwrap();
+        assert!(line_writer.bytes_per_line() >= 16);
+    }
+
+    #[test]
+    fn test_dump_with_various_byte_values() {
+        // Test with control characters, printable, and extended ASCII
+        let test_data = vec![
+            0x00, // NUL
+            0x0a, // LF
+            0x20, // Space
+            0x41, // 'A'
+            0x7f, // DEL
+            0xff, // Extended
+        ];
+        let mut reader = std::io::Cursor::new(&test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        dump("Various bytes", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        assert!(output.contains("Various bytes"));
+        // Check for individual hex values (with potential ANSI codes between them)
+        assert!(output.contains("00"));
+        assert!(output.contains("0a"));
+        assert!(output.contains("20"));
+        assert!(output.contains("41"));
+        assert!(output.contains("7f"));
+        assert!(output.contains("ff"));
+    }
+
+    #[test]
+    fn test_border_output() {
+        let test_data = b"test";
+        let mut reader = std::io::Cursor::new(test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        dump("Border Test", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        // Check for border characters
+        assert!(output.contains("─")); // horizontal line
+        assert!(output.contains("┬")); // top connector
+        assert!(output.contains("┴")); // bottom connector
+        assert!(output.contains("│")); // vertical separator
+    }
+
+    #[test]
+    fn test_empty_input() {
+        let test_data = b"";
+        let mut reader = std::io::Cursor::new(test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        dump("Empty", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        assert!(output.contains("Empty"));
+        // Should still have borders even with no data
+        assert!(output.contains("─"));
+    }
+
+    #[test]
+    fn test_exact_buffer_boundary() {
+        // Test data that exactly fills the read buffer (4096 bytes)
+        const READ_SIZE: usize = 4096;
+        let test_data: Vec<u8> = (0..READ_SIZE).map(|i| (i % 256) as u8).collect();
+        let mut reader = std::io::Cursor::new(&test_data);
+
+        let mut writer = BufferWriter::new();
+        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
+        dump("Buffer boundary", &mut reader, &mut line_writer).unwrap();
+        
+        let output = writer.to_utf8().unwrap();
+        assert!(output.contains("Buffer boundary"));
+    }
 }
