@@ -6,9 +6,9 @@
 pub struct BorderWriter;
 
 impl BorderWriter {
-    const HORIZONTAL: &'static str = "─";
-    const CONNECTOR_TOP: &'static str = "┬";
-    const CONNECTOR_BOTTOM: &'static str = "┴";
+    const HORIZONTAL: &'static [u8] = "─".as_bytes();
+    const CONNECTOR_TOP: &'static [u8] = "┬".as_bytes();
+    const CONNECTOR_BOTTOM: &'static [u8] = "┴".as_bytes();
 
     /// Writes a header border with an optional title above it.
     ///
@@ -42,7 +42,7 @@ impl BorderWriter {
         writer: &mut W,
         title: &str,
         bytes_per_line: usize,
-        connector: &str,
+        connector: &[u8],
         title_first: bool,
     ) -> std::io::Result<()> {
         let num_groups = bytes_per_line / 8;
@@ -54,19 +54,19 @@ impl BorderWriter {
 
         // Left section (offset column): 9 chars (8 hex + 1 space)
         for _ in 0..9 {
-            writer.write_all(Self::HORIZONTAL.as_bytes())?;
+            writer.write_all(Self::HORIZONTAL)?;
         }
-        writer.write_all(connector.as_bytes())?;
+        writer.write_all(connector)?;
 
         // Middle section (hex bytes)
         for _ in 0..(num_groups * num_bytes_per_group) {
-            writer.write_all(Self::HORIZONTAL.as_bytes())?;
+            writer.write_all(Self::HORIZONTAL)?;
         }
-        writer.write_all(connector.as_bytes())?;
+        writer.write_all(connector)?;
 
         // Right section (ASCII representation)
         for _ in 0..(bytes_per_line + 1) {
-            writer.write_all(Self::HORIZONTAL.as_bytes())?;
+            writer.write_all(Self::HORIZONTAL)?;
         }
 
         if !title_first && !title.is_empty() {

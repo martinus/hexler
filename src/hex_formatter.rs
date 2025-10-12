@@ -7,8 +7,8 @@ pub struct HexFormatter {
 }
 
 impl HexFormatter {
-    const GREY: &'static str = "\x1b[90m";
-    const COLOR_RESET: &'static str = "\x1b[0m";
+    const GREY: &'static [u8] = b"\x1b[90m";
+    const COLOR_RESET: &'static [u8] = b"\x1b[0m";
     const HEX_CHARS: &'static [u8] = b"0123456789abcdef";
 
     /// Creates a new HexFormatter with pre-computed hex lookup table.
@@ -56,15 +56,14 @@ impl HexFormatter {
         let num_leading_hex_zeroes = bc.leading_zeros() / 4;
 
         // Append grey color code
-        buf.extend_from_slice(Self::GREY.as_bytes());
+        buf.extend_from_slice(Self::GREY);
 
-        // Append leading zeros
-        for _ in 0..num_leading_hex_zeroes {
-            buf.push(b'0');
-        }
+        // Append leading zeros efficiently
+        let start_len = buf.len();
+        buf.resize(start_len + num_leading_hex_zeroes as usize, b'0');
 
         // Append color reset
-        buf.extend_from_slice(Self::COLOR_RESET.as_bytes());
+        buf.extend_from_slice(Self::COLOR_RESET);
 
         // Append the remaining hex digits
         for i in num_leading_hex_zeroes..8 {

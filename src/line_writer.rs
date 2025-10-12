@@ -127,10 +127,10 @@ where
             }
             group_counter = (group_counter + 1) & 7; // Faster than %8 or is_multiple_of(8)
 
-            let next_color_id = self.byte_to_color.color_id(byte);
+            let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
                 self.line_buf
-                    .extend_from_slice(self.byte_to_color.color_bytes(byte));
+                    .extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
             self.line_buf
@@ -139,13 +139,13 @@ where
 
         // Fill remaining space with padding
         let padding_count = self.bytes_per_line - bytes_in_buffer;
-        for _ in 0..padding_count {
-            if group_counter == 0 {
-                self.line_buf.push(b' ');
-            }
-            group_counter = (group_counter + 1) & 7; // Faster than %8 or is_multiple_of(8)
-            self.line_buf.extend_from_slice(b"   "); // HexFormatter::hex_space()
-        }
+
+        // Calculate number of separator spaces: count how many times group_counter wraps to 0
+        let num_separators =
+            ((bytes_in_buffer & 7) + padding_count) / 8 - (padding_count % 8 != 0) as usize;
+        let padding_size = num_separators + padding_count * 3;
+        self.line_buf
+            .resize(self.line_buf.len() + padding_size, b' ');
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
@@ -155,10 +155,10 @@ where
         self.line_buf.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
 
         for &byte in &buffer[..bytes_in_buffer] {
-            let next_color_id = self.byte_to_color.color_id(byte);
+            let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
                 self.line_buf
-                    .extend_from_slice(self.byte_to_color.color_bytes(byte));
+                    .extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
             self.line_buf

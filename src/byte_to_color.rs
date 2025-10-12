@@ -79,7 +79,7 @@ impl ByteToColor {
     /// Returns the ANSI color escape code as bytes for the given byte.
     /// This is more efficient than calling color().as_bytes() in hot loops.
     #[inline]
-    pub fn color_bytes(&self, byte: u8) -> &'static [u8] {
+    pub fn bytes(&self, byte: u8) -> &'static [u8] {
         self.color_bytes[byte as usize]
     }
 
@@ -87,7 +87,7 @@ impl ByteToColor {
     ///
     /// Color IDs are used to detect when the color changes between consecutive bytes,
     /// allowing us to output ANSI color codes only when necessary.
-    pub fn color_id(&self, byte: u8) -> u8 {
+    pub fn id(&self, byte: u8) -> u8 {
         self.color_id[byte as usize]
     }
 }
@@ -99,7 +99,7 @@ mod tests {
     // Helper function for tests to get color as &str
     fn color(btc: &ByteToColor, byte: u8) -> &str {
         // Safe because color_bytes always contains valid UTF-8 ANSI escape codes
-        unsafe { std::str::from_utf8_unchecked(btc.color_bytes(byte)) }
+        unsafe { std::str::from_utf8_unchecked(btc.bytes(byte)) }
     }
 
     #[test]
@@ -178,13 +178,13 @@ mod tests {
     fn test_color_id_consistency() {
         let btc = ByteToColor::new();
         // Same color should have same ID
-        let id1 = btc.color_id(b'A');
-        let id2 = btc.color_id(b'B');
+        let id1 = btc.id(b'A');
+        let id2 = btc.id(b'B');
         assert_eq!(id1, id2, "Uppercase letters should have the same color ID");
 
         // Different colors should have different IDs
-        let id_grey = btc.color_id(0x00);
-        let id_green = btc.color_id(0x20);
+        let id_grey = btc.id(0x00);
+        let id_green = btc.id(0x20);
         assert_ne!(
             id_grey, id_green,
             "Different colors should have different IDs"
@@ -198,7 +198,7 @@ mod tests {
 
         // Both should produce same colors
         assert_eq!(color(&btc1, 0x41), color(&btc2, 0x41));
-        assert_eq!(btc1.color_id(0x41), btc2.color_id(0x41));
+        assert_eq!(btc1.id(0x41), btc2.id(0x41));
     }
 
     #[test]
@@ -216,7 +216,7 @@ mod tests {
         let btc = ByteToColor::new();
         // Color ID 0 should be RESET
         for byte in 0..=255u8 {
-            let color_id = btc.color_id(byte);
+            let color_id = btc.id(byte);
             // ID should be reasonable (not too many unique colors)
             assert!(
                 color_id < 10,

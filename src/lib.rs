@@ -103,7 +103,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
 #[allow(clippy::needless_range_loop)]
 pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
     let mut arr = [0u8; 256];
-    for i in 0..256 {
+    for i in 0..arr.len() {
         arr[i] = i as u8;
     }
 
