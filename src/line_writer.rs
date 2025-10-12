@@ -44,7 +44,7 @@ where
     /// # Errors
     /// Returns `InvalidBytesPerLine` if the value doesn't meet the requirements.
     pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
-        if bytes_per_line < 8 || 0 != bytes_per_line % 8 {
+        if bytes_per_line < 8 || !bytes_per_line.is_multiple_of(8) {
             Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
         } else {
             Ok(Self {
@@ -187,9 +187,11 @@ mod tests {
         fn new() -> Self {
             Self { data: Vec::new() }
         }
+    }
 
-        fn to_string(&self) -> String {
-            String::from_utf8_lossy(&self.data).to_string()
+    impl std::fmt::Display for TestWriter {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", String::from_utf8_lossy(&self.data))
         }
     }
 

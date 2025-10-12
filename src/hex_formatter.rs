@@ -17,10 +17,10 @@ impl HexFormatter {
     /// enabling O(1) hex conversion without runtime computation.
     pub fn new() -> Self {
         let mut hex_lookup = [[0u8; 3]; 256];
-        for i in 0..256 {
-            hex_lookup[i][0] = Self::HEX_CHARS[i >> 4];
-            hex_lookup[i][1] = Self::HEX_CHARS[i & 0xf];
-            hex_lookup[i][2] = b' '; // space
+        for (i, item) in hex_lookup.iter_mut().enumerate() {
+            item[0] = Self::HEX_CHARS[i >> 4];
+            item[1] = Self::HEX_CHARS[i & 0xf];
+            item[2] = b' '; // space
         }
         Self { hex_lookup }
     }
@@ -40,7 +40,7 @@ impl HexFormatter {
 
     /// Returns three spaces "   " used for padding when a byte position is empty.
     pub fn hex_space() -> &'static [u8; 3] {
-        &[b' ', b' ', b' ']
+        b"   "
     }
 
     /// Writes a byte offset as 8 hex digits with leading zeros displayed in grey.
