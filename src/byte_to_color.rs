@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 pub struct ByteToColor {
-    color_ary: [&'static str; 256],
     color_id: [u8; 256],
+    color_bytes: [&'static [u8]; 256], // Pre-computed as_bytes() for each color
 }
 
 impl Default for ByteToColor {
@@ -33,7 +33,7 @@ impl ByteToColor {
     /// The color_id array stores unique identifiers for each color to enable
     /// efficient color change detection when rendering.
     pub fn new() -> Self {
-        let mut colors = [Self::RESET; 256];
+        let mut color_bytes = [Self::RESET.as_bytes(); 256];
         let mut color_id = [0u8; 256];
 
         let mut unique_color_count = 0u8;
@@ -62,7 +62,7 @@ impl ByteToColor {
                 // remaining high bytes
                 0x80..=0xfe => Self::BLUE,
             };
-            colors[i as usize] = color;
+            color_bytes[i as usize] = color.as_bytes();
             let val = color_to_id.entry(color).or_insert_with(|| {
                 unique_color_count += 1;
                 unique_color_count
@@ -71,14 +71,16 @@ impl ByteToColor {
         }
 
         Self {
-            color_ary: colors,
             color_id,
+            color_bytes,
         }
     }
 
-    /// Returns the ANSI color escape code for the given byte.
-    pub fn color(&self, byte: u8) -> &str {
-        self.color_ary[byte as usize]
+    /// Returns the ANSI color escape code as bytes for the given byte.
+    /// This is more efficient than calling color().as_bytes() in hot loops.
+    #[inline]
+    pub fn color_bytes(&self, byte: u8) -> &'static [u8] {
+        self.color_bytes[byte as usize]
     }
 
     /// Returns the color ID for the given byte.
@@ -94,40 +96,46 @@ impl ByteToColor {
 mod tests {
     use super::*;
 
+    // Helper function for tests to get color as &str
+    fn color(btc: &ByteToColor, byte: u8) -> &str {
+        // Safe because color_bytes always contains valid UTF-8 ANSI escape codes
+        unsafe { std::str::from_utf8_unchecked(btc.color_bytes(byte)) }
+    }
+
     #[test]
     fn test_nul_byte_color() {
         let btc = ByteToColor::new();
-        assert_eq!(btc.color(0x00), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0x00), ByteToColor::GREY);
     }
 
     #[test]
     fn test_del_byte_color() {
         let btc = ByteToColor::new();
-        assert_eq!(btc.color(0x7f), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0x7f), ByteToColor::GREY);
     }
 
     #[test]
     fn test_extended_ascii_color() {
         let btc = ByteToColor::new();
-        assert_eq!(btc.color(0xff), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0xff), ByteToColor::GREY);
     }
 
     #[test]
     fn test_whitespace_colors() {
         let btc = ByteToColor::new();
         // LF, VT, FF, CR, SPACE
-        assert_eq!(btc.color(0x0a), ByteToColor::GREEN); // LF
-        assert_eq!(btc.color(0x0b), ByteToColor::GREEN); // VT
-        assert_eq!(btc.color(0x0c), ByteToColor::GREEN); // FF
-        assert_eq!(btc.color(0x0d), ByteToColor::GREEN); // CR
-        assert_eq!(btc.color(0x20), ByteToColor::GREEN); // SPACE
+        assert_eq!(color(&btc, 0x0a), ByteToColor::GREEN); // LF
+        assert_eq!(color(&btc, 0x0b), ByteToColor::GREEN); // VT
+        assert_eq!(color(&btc, 0x0c), ByteToColor::GREEN); // FF
+        assert_eq!(color(&btc, 0x0d), ByteToColor::GREEN); // CR
+        assert_eq!(color(&btc, 0x20), ByteToColor::GREEN); // SPACE
     }
 
     #[test]
     fn test_digit_colors() {
         let btc = ByteToColor::new();
         for digit in b'0'..=b'9' {
-            assert_eq!(btc.color(digit), ByteToColor::RESET);
+            assert_eq!(color(&btc, digit), ByteToColor::RESET);
         }
     }
 
@@ -135,7 +143,7 @@ mod tests {
     fn test_uppercase_letter_colors() {
         let btc = ByteToColor::new();
         for letter in b'A'..=b'Z' {
-            assert_eq!(btc.color(letter), ByteToColor::RESET);
+            assert_eq!(color(&btc, letter), ByteToColor::RESET);
         }
     }
 
@@ -143,7 +151,7 @@ mod tests {
     fn test_lowercase_letter_colors() {
         let btc = ByteToColor::new();
         for letter in b'a'..=b'z' {
-            assert_eq!(btc.color(letter), ByteToColor::RESET);
+            assert_eq!(color(&btc, letter), ByteToColor::RESET);
         }
     }
 
@@ -151,18 +159,18 @@ mod tests {
     fn test_symbol_colors() {
         let btc = ByteToColor::new();
         // Test various symbols
-        assert_eq!(btc.color(b'!'), ByteToColor::MAGENTA);
-        assert_eq!(btc.color(b'#'), ByteToColor::MAGENTA);
-        assert_eq!(btc.color(b'@'), ByteToColor::MAGENTA);
-        assert_eq!(btc.color(b'['), ByteToColor::MAGENTA);
-        assert_eq!(btc.color(b'{'), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'!'), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'#'), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'@'), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'['), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'{'), ByteToColor::MAGENTA);
     }
 
     #[test]
     fn test_high_bytes_colors() {
         let btc = ByteToColor::new();
         for byte in 0x80..=0xfe {
-            assert_eq!(btc.color(byte), ByteToColor::BLUE);
+            assert_eq!(color(&btc, byte), ByteToColor::BLUE);
         }
     }
 
@@ -189,7 +197,7 @@ mod tests {
         let btc2 = ByteToColor::default();
 
         // Both should produce same colors
-        assert_eq!(btc1.color(0x41), btc2.color(0x41));
+        assert_eq!(color(&btc1, 0x41), color(&btc2, 0x41));
         assert_eq!(btc1.color_id(0x41), btc2.color_id(0x41));
     }
 
@@ -198,8 +206,8 @@ mod tests {
         let btc = ByteToColor::new();
         // Ensure every byte has a color assigned
         for byte in 0..=255u8 {
-            let color = btc.color(byte);
-            assert!(!color.is_empty(), "Byte {:02x} should have a color", byte);
+            let c = color(&btc, byte);
+            assert!(!c.is_empty(), "Byte {:02x} should have a color", byte);
         }
     }
 

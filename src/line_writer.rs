@@ -118,16 +118,18 @@ where
         let mut previous_color_id: u8 = 0;
 
         // Process actual bytes
-        for (i, &byte) in buffer[..bytes_in_buffer].iter().enumerate() {
+        let mut group_counter = 0;
+        for &byte in &buffer[..bytes_in_buffer] {
             // Add an additional space after 8 bytes
-            if i.is_multiple_of(8) {
+            if group_counter == 0 {
                 self.line_buf.push(b' ');
             }
+            group_counter = (group_counter + 1) & 7; // Faster than %8 or is_multiple_of(8)
 
             let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
                 self.line_buf
-                    .extend_from_slice(self.byte_to_color.color(byte).as_bytes());
+                    .extend_from_slice(self.byte_to_color.color_bytes(byte));
                 previous_color_id = next_color_id;
             }
             self.line_buf
@@ -154,7 +156,7 @@ where
             let next_color_id = self.byte_to_color.color_id(byte);
             if next_color_id != previous_color_id {
                 self.line_buf
-                    .extend_from_slice(self.byte_to_color.color(byte).as_bytes());
+                    .extend_from_slice(self.byte_to_color.color_bytes(byte));
                 previous_color_id = next_color_id;
             }
             self.line_buf
