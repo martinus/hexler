@@ -5,7 +5,10 @@ edition = "2021"
 license = "MIT"
 description = "A colorful hex printer with opinionated defaults"
 repository = "https://github.com/martinus/hexler"
+homepage = "https://github.com/martinus/hexler"
 readme = "README.md"
+keywords = ["hex", "dump", "viewer", "hexdump", "binary"]
+categories = ["command-line-utilities", "development-tools::debugging"]
 
 [lib]
 name = "hexler"
