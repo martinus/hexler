@@ -55,9 +55,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
     let mut buffer = vec![0u8; READ_BUFFER_SIZE];
 
     let bytes_per_line = line_writer.bytes_per_line();
-    let mut num_bytes_in_line = 0;
-    let mut line_buffer = [0u8; 1024];
-
+    
     // Create output buffer with generous capacity to avoid reallocations
     let mut output_buffer = Vec::with_capacity(bytes_per_line * 10);
 
@@ -74,30 +72,16 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
         let mut offset = 0;
 
         while offset < bytes_read {
-            let remaining_in_line = bytes_per_line - num_bytes_in_line;
             let available = bytes_read - offset;
-            let to_copy = remaining_in_line.min(available);
+            let to_write = available.min(bytes_per_line);
 
-            // Copy bytes to line buffer
-            line_buffer[num_bytes_in_line..num_bytes_in_line + to_copy]
-                .copy_from_slice(&data[offset..offset + to_copy]);
-
-            num_bytes_in_line += to_copy;
-            offset += to_copy;
-
-            if num_bytes_in_line == bytes_per_line {
-                line_writer.write_line(&mut output_buffer, &line_buffer, num_bytes_in_line);
-                num_bytes_in_line = 0;
-            }
+            // Write directly from the buffer slice, no copying needed
+            line_writer.write_line(&mut output_buffer, &data[offset..offset + to_write], to_write);
+            offset += to_write;
         }
 
         writer.write_all(&output_buffer)?;
         output_buffer.clear();
-    }
-
-    // Write any remaining partial line
-    if num_bytes_in_line > 0 {
-        line_writer.write_line(&mut output_buffer, &line_buffer, num_bytes_in_line);
     }
 
     line_writer.write_border(&mut output_buffer, line_writer::Border::Footer, "")?;
@@ -106,9 +90,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
     writer.write_all(&output_buffer)?;
     writer.flush()?;
     Ok(())
-}
-
-/// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
+}/// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
 pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter, writer: &mut W) -> Result<()> {
     let mut arr = [0u8; 256];
