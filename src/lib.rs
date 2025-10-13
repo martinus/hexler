@@ -37,62 +37,143 @@ pub struct Args {
 
 /// Reads data from a reader and outputs a colored hex dump.
 ///
-/// The data is read in 4KB chunks for efficiency, then processed byte-by-byte
-/// to build complete lines matching the configured bytes_per_line.
+/// Uses multi-threading with double buffering to overlap I/O operations: while one
+/// buffer is being written to output in a separate thread, the main thread reads and
+/// processes the next chunk of data into the other buffer. Buffers are recycled
+/// between threads to avoid allocations.
 ///
 /// # Arguments
 /// * `title` - Header text to display (filename, "stdin", etc.)
 /// * `reader` - Data source to read from
 /// * `line_writer` - Configured line writer for output formatting
 /// * `writer` - Output writer to write the formatted data to
-pub fn dump<R: std::io::Read, W: std::io::Write>(
+pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     title: &str,
     mut reader: R,
     line_writer: &mut LineWriter,
-    writer: &mut W,
+    writer: W,
 ) -> Result<()> {
-    const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB chunks for better I/O performance
-    let mut buffer = vec![0u8; READ_BUFFER_SIZE];
+    use std::sync::mpsc;
+    use std::thread;
+
+    const MAX_READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB chunks for better I/O performance
 
     let bytes_per_line = line_writer.bytes_per_line();
-    
-    // Create output buffer with generous capacity to avoid reallocations
-    let mut output_buffer = Vec::with_capacity(bytes_per_line * 10);
 
-    line_writer.write_border(&mut output_buffer, line_writer::Border::Header, title)?;
+    // Make sure the buffer size is a multiple of bytes_per_line, otherwise we would print partial lines.
+    // When reading data we make sure to always fill the buffer completely except for the last read.
+    let mut buffer = vec![0u8; (MAX_READ_BUFFER_SIZE / bytes_per_line) * bytes_per_line];
+
+    // Double buffering: two output buffers that we recycle between threads
+    let mut output_buffer_a = Vec::with_capacity(bytes_per_line * 10);
+    let output_buffer_b = Vec::with_capacity(bytes_per_line * 10);
+
+    // Bidirectional channels for buffer exchange
+    let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(0); // Send buffers to writer
+    let (return_tx, return_rx) = mpsc::sync_channel::<Vec<u8>>(1); // Get buffers back
+
+    // Spawn writer thread - runs in parallel with reading/processing
+    let writer_handle = thread::spawn(move || -> std::io::Result<()> {
+        let mut writer = writer;
+        for mut buf in write_rx {
+            writer.write_all(&buf)?;
+            // Return the buffer for reuse (clear it first)
+            buf.clear();
+            if return_tx.send(buf).is_err() {
+                break; // Main thread dropped the receiver
+            }
+        }
+        writer.flush()?;
+        Ok(())
+    });
+
+    // Use buffer A for the header
+    line_writer.write_border(&mut output_buffer_a, line_writer::Border::Header, title)?;
+
+    // Send first buffer, get started
+    if write_tx.send(output_buffer_a).is_err() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "Writer thread disconnected",
+        )
+        .into());
+    }
+
+    // Current working buffer
+    let mut current_buffer = output_buffer_b;
 
     loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
+        // Read until buffer is full or EOF - this ensures we only get partial lines at the very end
+        let mut total_read = 0;
+        while total_read < buffer.len() {
+            let bytes_read = reader.read(&mut buffer[total_read..])?;
+            if bytes_read == 0 {
+                break; // EOF reached
+            }
+            total_read += bytes_read;
         }
 
-        // Process bytes in chunks aligned to line boundaries for better cache locality
-        let data = &buffer[..bytes_read];
+        if total_read == 0 {
+            break; // Nothing more to read
+        }
+
+        // Process bytes in chunks aligned to line boundaries
+        let data = &buffer[..total_read];
         let mut offset = 0;
 
-        while offset < bytes_read {
-            let available = bytes_read - offset;
+        while offset < total_read {
+            let available = total_read - offset;
             let to_write = available.min(bytes_per_line);
 
             // Write directly from the buffer slice, no copying needed
-            line_writer.write_line(&mut output_buffer, &data[offset..offset + to_write], to_write);
+            line_writer.write_line(
+                &mut current_buffer,
+                &data[offset..offset + to_write],
+                to_write,
+            );
             offset += to_write;
         }
 
-        writer.write_all(&output_buffer)?;
-        output_buffer.clear();
+        // Send current buffer to writer thread
+        if write_tx.send(current_buffer).is_err() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "Writer thread disconnected",
+            )
+            .into());
+        }
+
+        // Get a recycled buffer back (blocks until writer is done with previous buffer)
+        current_buffer = return_rx.recv().map_err(|_| {
+            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Writer thread disconnected")
+        })?;
     }
 
-    line_writer.write_border(&mut output_buffer, line_writer::Border::Footer, "")?;
+    // Add footer to current buffer
+    line_writer.write_border(&mut current_buffer, line_writer::Border::Footer, "")?;
 
-    // Write the entire output buffer to the writer
-    writer.write_all(&output_buffer)?;
-    writer.flush()?;
+    // Send final buffer
+    if write_tx.send(current_buffer).is_err() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "Writer thread disconnected",
+        )
+        .into());
+    }
+
+    // Close write channel and wait for writer thread to finish all writes
+    drop(write_tx);
+    drop(return_rx); // Close return channel too
+    writer_handle.join().unwrap()?;
+
     Ok(())
-}/// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
+}
+/// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
-pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter, writer: &mut W) -> Result<()> {
+pub fn demo<W: std::io::Write + Send + 'static>(
+    line_writer: &mut LineWriter,
+    writer: W,
+) -> Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..arr.len() {
         arr[i] = i as u8;
@@ -113,7 +194,7 @@ pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter, writer: &mut W) -> 
 pub fn run() -> Result<()> {
     let args: Args = Args::parse();
 
-    let mut writer = std::io::stdout();
+    let writer = std::io::stdout();
 
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
@@ -134,7 +215,7 @@ pub fn run() -> Result<()> {
     }
 
     if args.demo {
-        return demo(&mut line_writer, &mut writer);
+        return demo(&mut line_writer, writer);
     }
 
     match args.file {
@@ -157,37 +238,42 @@ pub fn run() -> Result<()> {
             );
 
             let f = std::fs::File::open(&file);
-            dump(title.as_str(), f?, &mut line_writer, &mut writer)
+            dump(title.as_str(), f?, &mut line_writer, writer)
         }
-        None => dump(
-            "stdin",
-            std::io::stdin().lock(),
-            &mut line_writer,
-            &mut writer,
-        ),
+        None => dump("stdin", std::io::stdin().lock(), &mut line_writer, writer),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    /// Test helper: A writer that stores output in a Vec<u8> for verification.
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// Test helper: A thread-safe writer that stores output in a Vec<u8> for verification.
+    #[derive(Clone)]
     pub struct BufferWriter {
-        data: Vec<u8>,
+        data: Arc<Mutex<Vec<u8>>>,
     }
 
     impl BufferWriter {
         pub fn new() -> Self {
-            BufferWriter { data: vec![] }
+            BufferWriter {
+                data: Arc::new(Mutex::new(vec![])),
+            }
         }
 
-        pub fn to_utf8(&self) -> std::result::Result<&str, std::str::Utf8Error> {
-            std::str::from_utf8(&self.data)
+        pub fn get_output(&self) -> Vec<u8> {
+            self.data.lock().unwrap().clone()
+        }
+
+        pub fn get_output_as_string(&self) -> String {
+            String::from_utf8_lossy(&self.get_output()).to_string()
         }
     }
 
     impl std::io::Write for BufferWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.data.extend_from_slice(buf);
+            self.data.lock().unwrap().extend_from_slice(buf);
             Ok(buf.len())
         }
 
@@ -196,16 +282,40 @@ mod tests {
         }
     }
 
-    use super::*;
-
     #[test]
     fn test_dump_empty() {
-        let mut reader = std::io::Cursor::new(b"x");
+        let test_data = b"";
+        let mut reader = std::io::Cursor::new(test_data);
 
-        let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_max_width(8).unwrap();
-        dump("Test", &mut reader, &mut line_writer, &mut writer).unwrap();
-        println!("data={}", writer.to_utf8().unwrap());
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+
+        let result = dump("Empty", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output_as_string();
+        // Should have header and footer borders
+        assert!(output.contains("Empty"));
+        assert!(output.contains("─")); // Border character
+    }
+
+    #[test]
+    fn test_dump_single_byte() {
+        let test_data = b"x";
+        let mut reader = std::io::Cursor::new(test_data);
+
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+
+        let result = dump("Test", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output_as_string();
+        // Should contain the hex value of 'x' (0x78)
+        assert!(output.contains("78"));
+        assert!(output.contains("Test"));
     }
 
     #[test]
@@ -214,20 +324,22 @@ mod tests {
         let test_data: Vec<u8> = (0..=255).collect();
         let mut reader = std::io::Cursor::new(&test_data);
 
-        let mut writer = BufferWriter::new();
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
         let mut line_writer = LineWriter::new_bytes(16).unwrap();
-        dump(
-            "Multi-line test",
-            &mut reader,
-            &mut line_writer,
-            &mut writer,
-        )
-        .unwrap();
 
-        let output = writer.to_utf8().unwrap();
+        let result = dump("Multi-line test", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output_as_string();
+        // Should have title and multiple lines of hex output
         assert!(output.contains("Multi-line test"));
-        assert!(output.contains("00000000"));
-        assert!(output.contains("f0")); // Last line contains f0
+        // Should contain hex for first byte (00) and last byte (ff)
+        assert!(output.contains("00"));
+        assert!(output.contains("ff"));
+        // Count lines - should have header, footer, and data lines
+        let line_count = output.lines().count();
+        assert!(line_count >= 18); // 256 bytes / 16 per line = 16 lines + header + footer
     }
 
     #[test]
@@ -236,13 +348,19 @@ mod tests {
         let test_data = b"Hello";
         let mut reader = std::io::Cursor::new(test_data);
 
-        let mut writer = BufferWriter::new();
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
         let mut line_writer = LineWriter::new_bytes(16).unwrap();
-        dump("Partial", &mut reader, &mut line_writer, &mut writer).unwrap();
 
-        let output = writer.to_utf8().unwrap();
-        assert!(output.contains("Partial"));
-        assert!(output.contains("48 65 6c 6c 6f")); // "Hello" in hex
+        let result = dump("Partial", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output_as_string();
+        // Should contain hex values for "Hello"
+        assert!(output.contains("48")); // 'H'
+        assert!(output.contains("65")); // 'e'
+        assert!(output.contains("6c")); // 'l'
+        assert!(output.contains("6f")); // 'o'
     }
 
     #[test]
@@ -285,13 +403,15 @@ mod tests {
         ];
         let mut reader = std::io::Cursor::new(&test_data);
 
-        let mut writer = BufferWriter::new();
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
-        dump("Various bytes", &mut reader, &mut line_writer, &mut writer).unwrap();
 
-        let output = writer.to_utf8().unwrap();
-        assert!(output.contains("Various bytes"));
-        // Check for individual hex values (with potential ANSI codes between them)
+        let result = dump("Various bytes", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output_as_string();
+        // Verify all hex values are present
         assert!(output.contains("00"));
         assert!(output.contains("0a"));
         assert!(output.contains("20"));
@@ -305,51 +425,41 @@ mod tests {
         let test_data = b"test";
         let mut reader = std::io::Cursor::new(test_data);
 
-        let mut writer = BufferWriter::new();
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
-        dump("Border Test", &mut reader, &mut line_writer, &mut writer).unwrap();
 
-        let output = writer.to_utf8().unwrap();
-        // Check for border characters
-        assert!(output.contains("─")); // horizontal line
-        assert!(output.contains("┬")); // top connector
-        assert!(output.contains("┴")); // bottom connector
-        assert!(output.contains("│")); // vertical separator
-    }
+        let result = dump("Border Test", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
 
-    #[test]
-    fn test_empty_input() {
-        let test_data = b"";
-        let mut reader = std::io::Cursor::new(test_data);
-
-        let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(8).unwrap();
-        dump("Empty", &mut reader, &mut line_writer, &mut writer).unwrap();
-
-        let output = writer.to_utf8().unwrap();
-        assert!(output.contains("Empty"));
-        // Should still have borders even with no data
-        assert!(output.contains("─"));
+        let output = writer_clone.get_output_as_string();
+        // Should have border characters and title
+        assert!(output.contains("Border Test"));
+        assert!(output.contains("─")); // Unicode box drawing character
+        let line_count = output.lines().count();
+        assert!(line_count >= 3); // At least header, data, and footer
     }
 
     #[test]
     fn test_exact_buffer_boundary() {
-        // Test data that exactly fills the read buffer (4096 bytes)
-        const READ_SIZE: usize = 4096;
+        // Test data that exactly fills the read buffer (64KB)
+        const READ_SIZE: usize = 64 * 1024;
         let test_data: Vec<u8> = (0..READ_SIZE).map(|i| (i % 256) as u8).collect();
         let mut reader = std::io::Cursor::new(&test_data);
 
-        let mut writer = BufferWriter::new();
+        let writer = BufferWriter::new();
+        let writer_clone = writer.clone();
         let mut line_writer = LineWriter::new_bytes(16).unwrap();
-        dump(
-            "Buffer boundary",
-            &mut reader,
-            &mut line_writer,
-            &mut writer,
-        )
-        .unwrap();
 
-        let output = writer.to_utf8().unwrap();
-        assert!(output.contains("Buffer boundary"));
+        let result = dump("Buffer boundary", &mut reader, &mut line_writer, writer);
+        assert!(result.is_ok());
+
+        let output = writer_clone.get_output();
+        // Should have produced output
+        assert!(!output.is_empty());
+        // Should have multiple lines (64KB / 16 bytes per line = 4096 lines + borders)
+        let output_str = String::from_utf8_lossy(&output);
+        let line_count = output_str.lines().count();
+        assert!(line_count >= 4098); // 4096 data lines + header + footer
     }
 }

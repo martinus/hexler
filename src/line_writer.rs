@@ -74,7 +74,12 @@ impl LineWriter {
     }
 
     /// Writes a header or footer border with an optional title to the provided buffer.
-    pub fn write_border(&mut self, buffer: &mut Vec<u8>, border: Border, title: &str) -> std::io::Result<()> {
+    pub fn write_border(
+        &mut self,
+        buffer: &mut Vec<u8>,
+        border: Border,
+        title: &str,
+    ) -> std::io::Result<()> {
         match border {
             Border::Header => BorderWriter::write_header(buffer, title, self.bytes_per_line),
             Border::Footer => BorderWriter::write_footer(buffer, title, self.bytes_per_line),
@@ -98,8 +103,7 @@ impl LineWriter {
     /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
     pub fn write_line(&mut self, buffer: &mut Vec<u8>, line_data: &[u8], bytes_in_buffer: usize) {
         // Write hex offset
-        self.hex_formatter
-            .write_offset(buffer, self.byte_counter);
+        self.hex_formatter.write_offset(buffer, self.byte_counter);
         buffer.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
 
         self.byte_counter += bytes_in_buffer;
@@ -118,12 +122,10 @@ impl LineWriter {
 
             let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
-                buffer
-                    .extend_from_slice(self.byte_to_color.bytes(byte));
+                buffer.extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
-            buffer
-                .extend_from_slice(self.hex_formatter.hex_byte(byte));
+            buffer.extend_from_slice(self.hex_formatter.hex_byte(byte));
         }
 
         // Fill remaining space with padding
@@ -133,8 +135,7 @@ impl LineWriter {
         let num_separators =
             ((bytes_in_buffer & 7) + padding_count) / 8 - (padding_count % 8 != 0) as usize;
         let padding_size = num_separators + padding_count * 3;
-        buffer
-            .resize(buffer.len() + padding_size, b' ');
+        buffer.resize(buffer.len() + padding_size, b' ');
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
@@ -146,12 +147,10 @@ impl LineWriter {
         for &byte in &line_data[..bytes_in_buffer] {
             let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
-                buffer
-                    .extend_from_slice(self.byte_to_color.bytes(byte));
+                buffer.extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
-            buffer
-                .extend_from_slice(self.ascii_renderer.render_bytes(byte));
+            buffer.extend_from_slice(self.ascii_renderer.render_bytes(byte));
         }
 
         // Finished writing bytes, so reset color and finally go to the next line
