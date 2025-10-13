@@ -113,7 +113,7 @@ pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter, writer: &mut W) -> 
 pub fn run() -> Result<()> {
     let args: Args = Args::parse();
 
-    let mut writer = std::io::BufWriter::with_capacity(64 * 1024, std::io::stdout());
+    let mut writer = std::io::stdout();
 
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
