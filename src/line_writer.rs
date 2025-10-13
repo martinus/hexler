@@ -13,14 +13,12 @@ use crate::hex_formatter::HexFormatter;
 /// - `BorderWriter`: Draws Unicode borders for visual separation
 ///
 /// Output format: `00000000 │ 7f 45 4c 46 ... │ ⌂ELF...`
-pub struct LineWriter<'a, T: 'a> {
-    writer: &'a mut T,
+pub struct LineWriter {
     hex_formatter: HexFormatter,
     ascii_renderer: AsciiRenderer,
     byte_to_color: ByteToColor,
     bytes_per_line: usize,
     byte_counter: usize,
-    line_buf: Vec<u8>,
 }
 
 /// Border type for headers and footers.
@@ -29,10 +27,7 @@ pub enum Border {
     Footer,
 }
 
-impl<'a, T> LineWriter<'a, T>
-where
-    T: std::io::Write + 'a,
-{
+impl LineWriter {
     const COLOR_RESET: &'static [u8] = b"\x1b[0m";
 
     /// Creates a new LineWriter with a specified number of bytes per line.
@@ -42,21 +37,17 @@ where
     ///
     /// # Errors
     /// Returns `InvalidBytesPerLine` if the value doesn't meet the requirements.
-    pub fn new_bytes(writer: &'a mut T, bytes_per_line: usize) -> Result<Self> {
+    pub fn new_bytes(bytes_per_line: usize) -> Result<Self> {
         if bytes_per_line < 8 || bytes_per_line & 7 != 0 {
             // Faster than is_multiple_of(8)
             Err(HexlerError::InvalidBytesPerLine(bytes_per_line))
         } else {
-            // Pre-allocate line buffer with generous capacity to avoid reallocations. In any case when more bytes are needed it grows automatically.
-            let line_buf = Vec::with_capacity(bytes_per_line * 10);
             Ok(Self {
-                writer,
                 hex_formatter: HexFormatter::new(),
                 ascii_renderer: AsciiRenderer::new(),
                 byte_to_color: ByteToColor::new(),
                 bytes_per_line,
                 byte_counter: 0,
-                line_buf,
             })
         }
     }
@@ -68,13 +59,13 @@ where
     ///
     /// # Arguments
     /// * `max_width` - Maximum line width in characters
-    pub fn new_max_width(writer: &'a mut T, max_width: usize) -> Result<Self> {
+    pub fn new_max_width(max_width: usize) -> Result<Self> {
         let mut num_groups_of_8: usize = 1;
         while 13 + (num_groups_of_8 + 1) * 33 <= max_width {
             num_groups_of_8 += 1;
         }
 
-        Self::new_bytes(writer, num_groups_of_8 * 8)
+        Self::new_bytes(num_groups_of_8 * 8)
     }
 
     /// Returns the number of bytes displayed per line.
@@ -82,11 +73,11 @@ where
         self.bytes_per_line
     }
 
-    /// Writes a header or footer border with an optional title.
-    pub fn write_border(&mut self, border: Border, title: &str) -> std::io::Result<()> {
+    /// Writes a header or footer border with an optional title to the provided buffer.
+    pub fn write_border(&mut self, buffer: &mut Vec<u8>, border: Border, title: &str) -> std::io::Result<()> {
         match border {
-            Border::Header => BorderWriter::write_header(self.writer, title, self.bytes_per_line),
-            Border::Footer => BorderWriter::write_footer(self.writer, title, self.bytes_per_line),
+            Border::Header => BorderWriter::write_header(buffer, title, self.bytes_per_line),
+            Border::Footer => BorderWriter::write_footer(buffer, title, self.bytes_per_line),
         }
     }
 
@@ -102,16 +93,14 @@ where
     /// Colors are only written when they change to minimize output size.
     ///
     /// # Arguments
-    /// * `buffer` - Byte buffer to display (must be at least `bytes_in_buffer` long)
+    /// * `buffer` - Output buffer to append the line to (not cleared, only appended)
+    /// * `line_data` - Byte buffer to display (must be at least `bytes_in_buffer` long)
     /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
-    pub fn write_line(&mut self, buffer: &[u8], bytes_in_buffer: usize) -> std::io::Result<()> {
-        // Clear the line buffer but keep allocated capacity for reuse
-        self.line_buf.clear();
-
+    pub fn write_line(&mut self, buffer: &mut Vec<u8>, line_data: &[u8], bytes_in_buffer: usize) {
         // Write hex offset
         self.hex_formatter
-            .write_offset(&mut self.line_buf, self.byte_counter);
-        self.line_buf.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
+            .write_offset(buffer, self.byte_counter);
+        buffer.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
 
         self.byte_counter += bytes_in_buffer;
 
@@ -120,20 +109,20 @@ where
 
         // Process actual bytes
         let mut group_counter = 0;
-        for &byte in &buffer[..bytes_in_buffer] {
+        for &byte in &line_data[..bytes_in_buffer] {
             // Add an additional space after 8 bytes
             if group_counter == 0 {
-                self.line_buf.push(b' ');
+                buffer.push(b' ');
             }
             group_counter = (group_counter + 1) & 7; // Faster than %8 or is_multiple_of(8)
 
             let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
-                self.line_buf
+                buffer
                     .extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
-            self.line_buf
+            buffer
                 .extend_from_slice(self.hex_formatter.hex_byte(byte));
         }
 
@@ -144,46 +133,32 @@ where
         let num_separators =
             ((bytes_in_buffer & 7) + padding_count) / 8 - (padding_count % 8 != 0) as usize;
         let padding_size = num_separators + padding_count * 3;
-        self.line_buf
-            .resize(self.line_buf.len() + padding_size, b' ');
+        buffer
+            .resize(buffer.len() + padding_size, b' ');
 
         // Write codepage 437 characters
         if previous_color_id != 0 {
-            self.line_buf.extend_from_slice(Self::COLOR_RESET);
+            buffer.extend_from_slice(Self::COLOR_RESET);
             previous_color_id = 0;
         }
-        self.line_buf.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
+        buffer.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
 
-        for &byte in &buffer[..bytes_in_buffer] {
+        for &byte in &line_data[..bytes_in_buffer] {
             let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
-                self.line_buf
+                buffer
                     .extend_from_slice(self.byte_to_color.bytes(byte));
                 previous_color_id = next_color_id;
             }
-            self.line_buf
+            buffer
                 .extend_from_slice(self.ascii_renderer.render_bytes(byte));
         }
 
         // Finished writing bytes, so reset color and finally go to the next line
         if previous_color_id != 0 {
-            self.line_buf.extend_from_slice(Self::COLOR_RESET);
+            buffer.extend_from_slice(Self::COLOR_RESET);
         }
-        self.line_buf.push(b'\n');
-
-        // Single write_all call for the entire line
-        self.writer.write_all(&self.line_buf)?;
-        Ok(())
-    }
-
-    /// Flushes the underlying writer to ensure all data is written.
-    ///
-    /// From the Rust docs: "It is critical to call flush before BufWriter<W> is dropped.
-    /// Though dropping will attempt to flush the contents of the buffer, any errors that
-    /// happen in the process of dropping will be ignored. Calling flush ensures that the
-    /// buffer is empty and thus dropping will not even attempt file operations."
-    pub fn flush(&mut self) -> std::io::Result<()> {
-        self.writer.flush()
+        buffer.push(b'\n');
     }
 }
 
@@ -191,79 +166,48 @@ where
 mod tests {
     use super::*;
 
-    struct TestWriter {
-        data: Vec<u8>,
-    }
-
-    impl TestWriter {
-        fn new() -> Self {
-            Self { data: Vec::new() }
-        }
-    }
-
-    impl std::fmt::Display for TestWriter {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", String::from_utf8_lossy(&self.data))
-        }
-    }
-
-    impl std::io::Write for TestWriter {
-        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.data.extend_from_slice(buf);
-            Ok(buf.len())
-        }
-
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-
     #[test]
     fn test_new_bytes_valid() {
-        let mut writer = TestWriter::new();
-        let result = LineWriter::new_bytes(&mut writer, 8);
+        let result = LineWriter::new_bytes(8);
         assert!(result.is_ok());
 
-        let result = LineWriter::new_bytes(&mut writer, 16);
+        let result = LineWriter::new_bytes(16);
         assert!(result.is_ok());
 
-        let result = LineWriter::new_bytes(&mut writer, 32);
+        let result = LineWriter::new_bytes(32);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_new_bytes_invalid_too_small() {
-        let mut writer = TestWriter::new();
-        let result = LineWriter::new_bytes(&mut writer, 4);
+        let result = LineWriter::new_bytes(4);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_new_bytes_invalid_not_multiple() {
-        let mut writer = TestWriter::new();
-        let result = LineWriter::new_bytes(&mut writer, 12);
+        let result = LineWriter::new_bytes(12);
         assert!(result.is_err());
 
-        let result = LineWriter::new_bytes(&mut writer, 20);
+        let result = LineWriter::new_bytes(20);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_bytes_per_line() {
-        let mut writer = TestWriter::new();
-        let line_writer = LineWriter::new_bytes(&mut writer, 24).unwrap();
+        let line_writer = LineWriter::new_bytes(24).unwrap();
         assert_eq!(line_writer.bytes_per_line(), 24);
     }
 
     #[test]
     fn test_write_border_header() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
         line_writer
-            .write_border(Border::Header, "Test Header")
+            .write_border(&mut buffer, Border::Header, "Test Header")
             .unwrap();
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         assert!(output.contains("Test Header"));
         assert!(output.contains("─")); // horizontal border
         assert!(output.contains("┬")); // top connector
@@ -271,13 +215,13 @@ mod tests {
 
     #[test]
     fn test_write_border_footer() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
         line_writer
-            .write_border(Border::Footer, "Test Footer")
+            .write_border(&mut buffer, Border::Footer, "Test Footer")
             .unwrap();
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         assert!(output.contains("Test Footer"));
         assert!(output.contains("─")); // horizontal border
         assert!(output.contains("┴")); // bottom connector
@@ -285,13 +229,13 @@ mod tests {
 
     #[test]
     fn test_write_line_full() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
-        let buffer = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
-        line_writer.write_line(&buffer, 8).unwrap();
+        let line_data = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
+        line_writer.write_line(&mut buffer, &line_data, 8);
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         // Hex values might have ANSI color codes between them
         assert!(output.contains("48"));
         assert!(output.contains("65"));
@@ -303,32 +247,32 @@ mod tests {
 
     #[test]
     fn test_write_line_partial() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(16).unwrap();
 
-        let mut buffer = [0u8; 16];
-        buffer[0] = 0x41; // 'A'
-        buffer[1] = 0x42; // 'B'
-        buffer[2] = 0x43; // 'C'
+        let mut line_data = [0u8; 16];
+        line_data[0] = 0x41; // 'A'
+        line_data[1] = 0x42; // 'B'
+        line_data[2] = 0x43; // 'C'
 
-        line_writer.write_line(&buffer, 3).unwrap();
+        line_writer.write_line(&mut buffer, &line_data, 3);
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         assert!(output.contains("41 42 43")); // The 3 bytes we wrote
                                               // Should have spacing for remaining bytes
     }
 
     #[test]
     fn test_write_line_increments_byte_counter() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
-        let buffer = [0u8; 8];
-        line_writer.write_line(&buffer, 8).unwrap();
+        let line_data = [0u8; 8];
+        line_writer.write_line(&mut buffer, &line_data, 8);
 
         // Write another line - offset should have changed
-        line_writer.write_line(&buffer, 8).unwrap();
-        let output = writer.to_string();
+        line_writer.write_line(&mut buffer, &line_data, 8);
+        let output = String::from_utf8_lossy(&buffer);
 
         // Should show first offset all zeros
         assert!(output.contains("00000000"));
@@ -340,13 +284,13 @@ mod tests {
 
     #[test]
     fn test_codepage_437_characters() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
-        let buffer = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
-        line_writer.write_line(&buffer, 8).unwrap();
+        let line_data = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
+        line_writer.write_line(&mut buffer, &line_data, 8);
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         // Should contain codepage 437 representations
         assert!(output.contains("⋄")); // 0x00
         assert!(output.contains("☺")); // 0x01
@@ -356,16 +300,14 @@ mod tests {
 
     #[test]
     fn test_new_max_width_small() {
-        let mut writer = TestWriter::new();
-        let line_writer = LineWriter::new_max_width(&mut writer, 50).unwrap();
+        let line_writer = LineWriter::new_max_width(50).unwrap();
         // Should default to minimum (8 bytes)
         assert_eq!(line_writer.bytes_per_line(), 8);
     }
 
     #[test]
     fn test_new_max_width_large() {
-        let mut writer = TestWriter::new();
-        let line_writer = LineWriter::new_max_width(&mut writer, 200).unwrap();
+        let line_writer = LineWriter::new_max_width(200).unwrap();
         // Should allow more than minimum bytes
         assert!(line_writer.bytes_per_line() > 8);
         // Should be multiple of 8
@@ -373,26 +315,14 @@ mod tests {
     }
 
     #[test]
-    fn test_flush() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-
-        let buffer = [0x41; 8];
-        line_writer.write_line(&buffer, 8).unwrap();
-
-        // Flush should not error
-        assert!(line_writer.flush().is_ok());
-    }
-
-    #[test]
     fn test_hex_offset_leading_zeros() {
-        let mut writer = TestWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
+        let mut buffer = Vec::new();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
-        let buffer = [0u8; 8];
-        line_writer.write_line(&buffer, 8).unwrap();
+        let line_data = [0u8; 8];
+        line_writer.write_line(&mut buffer, &line_data, 8);
 
-        let output = writer.to_string();
+        let output = String::from_utf8_lossy(&buffer);
         // First line should have leading zeros
         assert!(output.contains("00000000"));
     }

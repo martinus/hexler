@@ -44,10 +44,12 @@ pub struct Args {
 /// * `title` - Header text to display (filename, "stdin", etc.)
 /// * `reader` - Data source to read from
 /// * `line_writer` - Configured line writer for output formatting
+/// * `writer` - Output writer to write the formatted data to
 pub fn dump<R: std::io::Read, W: std::io::Write>(
     title: &str,
     mut reader: R,
-    line_writer: &mut LineWriter<W>,
+    line_writer: &mut LineWriter,
+    writer: &mut W,
 ) -> Result<()> {
     const READ_BUFFER_SIZE: usize = 64 * 1024; // 64KB chunks for better I/O performance
     let mut buffer = vec![0u8; READ_BUFFER_SIZE];
@@ -56,7 +58,10 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
     let mut num_bytes_in_line = 0;
     let mut line_buffer = [0u8; 1024];
 
-    line_writer.write_border(line_writer::Border::Header, title)?;
+    // Create output buffer with generous capacity to avoid reallocations
+    let mut output_buffer = Vec::with_capacity(bytes_per_line * 10);
+
+    line_writer.write_border(&mut output_buffer, line_writer::Border::Header, title)?;
 
     loop {
         let bytes_read = reader.read(&mut buffer)?;
@@ -81,27 +86,31 @@ pub fn dump<R: std::io::Read, W: std::io::Write>(
             offset += to_copy;
 
             if num_bytes_in_line == bytes_per_line {
-                line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+                line_writer.write_line(&mut output_buffer, &line_buffer, num_bytes_in_line);
                 num_bytes_in_line = 0;
             }
         }
+
+        writer.write_all(&output_buffer)?;
+        output_buffer.clear();
     }
 
     // Write any remaining partial line
     if num_bytes_in_line > 0 {
-        line_writer.write_line(&line_buffer, num_bytes_in_line)?;
+        line_writer.write_line(&mut output_buffer, &line_buffer, num_bytes_in_line);
     }
 
-    line_writer.write_border(line_writer::Border::Footer, "")?;
+    line_writer.write_border(&mut output_buffer, line_writer::Border::Footer, "")?;
 
-    // make sure that the line writer is flushed to stdout before returning.
-    line_writer.flush()?;
+    // Write the entire output buffer to the writer
+    writer.write_all(&output_buffer)?;
+    writer.flush()?;
     Ok(())
 }
 
 /// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
-pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
+pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter, writer: &mut W) -> Result<()> {
     let mut arr = [0u8; 256];
     for i in 0..arr.len() {
         arr[i] = i as u8;
@@ -109,7 +118,7 @@ pub fn demo<W: std::io::Write>(line_writer: &mut LineWriter<W>) -> Result<()> {
 
     // we need to use Cursor so we get an std::io::Reader
     let reader = std::io::Cursor::new(arr);
-    dump("demo, 256 bytes, 0 to 255", reader, line_writer)
+    dump("demo, 256 bytes, 0 to 255", reader, line_writer, writer)
 }
 
 /// Main application entry point - parses arguments and coordinates the hex dump output.
@@ -126,12 +135,12 @@ pub fn run() -> Result<()> {
 
     // determine terminal size, and from that the number of bytes to print per line.
     let line_writer = match args.num_bytes_per_line {
-        Some(num_bytes) => LineWriter::new_bytes(&mut writer, num_bytes),
+        Some(num_bytes) => LineWriter::new_bytes(num_bytes),
         None => {
             let term_width = term_size::dimensions()
                 .ok_or(HexlerError::TerminalSizeError)?
                 .0;
-            LineWriter::new_max_width(&mut writer, term_width)
+            LineWriter::new_max_width(term_width)
         }
     };
 
@@ -143,7 +152,7 @@ pub fn run() -> Result<()> {
     }
 
     if args.demo {
-        return demo(&mut line_writer);
+        return demo(&mut line_writer, &mut writer);
     }
 
     match args.file {
@@ -166,9 +175,14 @@ pub fn run() -> Result<()> {
             );
 
             let f = std::fs::File::open(&file);
-            dump(title.as_str(), f?, &mut line_writer)
+            dump(title.as_str(), f?, &mut line_writer, &mut writer)
         }
-        None => dump("stdin", std::io::stdin().lock(), &mut line_writer),
+        None => dump(
+            "stdin",
+            std::io::stdin().lock(),
+            &mut line_writer,
+            &mut writer,
+        ),
     }
 }
 
@@ -207,8 +221,8 @@ mod tests {
         let mut reader = std::io::Cursor::new(b"x");
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_max_width(&mut writer, 8).unwrap();
-        dump("Test", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_max_width(8).unwrap();
+        dump("Test", &mut reader, &mut line_writer, &mut writer).unwrap();
         println!("data={}", writer.to_utf8().unwrap());
     }
 
@@ -219,8 +233,14 @@ mod tests {
         let mut reader = std::io::Cursor::new(&test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
-        dump("Multi-line test", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(16).unwrap();
+        dump(
+            "Multi-line test",
+            &mut reader,
+            &mut line_writer,
+            &mut writer,
+        )
+        .unwrap();
 
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Multi-line test"));
@@ -235,8 +255,8 @@ mod tests {
         let mut reader = std::io::Cursor::new(test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
-        dump("Partial", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(16).unwrap();
+        dump("Partial", &mut reader, &mut line_writer, &mut writer).unwrap();
 
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Partial"));
@@ -245,32 +265,28 @@ mod tests {
 
     #[test]
     fn test_line_writer_invalid_bytes_per_line() {
-        let mut writer = BufferWriter::new();
-
         // Test less than minimum
-        let result = LineWriter::new_bytes(&mut writer, 4);
+        let result = LineWriter::new_bytes(4);
         assert!(result.is_err());
 
         // Test not multiple of 8
-        let result = LineWriter::new_bytes(&mut writer, 12);
+        let result = LineWriter::new_bytes(12);
         assert!(result.is_err());
 
         // Test valid values
-        assert!(LineWriter::new_bytes(&mut writer, 8).is_ok());
-        assert!(LineWriter::new_bytes(&mut writer, 16).is_ok());
-        assert!(LineWriter::new_bytes(&mut writer, 24).is_ok());
+        assert!(LineWriter::new_bytes(8).is_ok());
+        assert!(LineWriter::new_bytes(16).is_ok());
+        assert!(LineWriter::new_bytes(24).is_ok());
     }
 
     #[test]
     fn test_line_writer_max_width_calculation() {
-        let mut writer = BufferWriter::new();
-
         // Small width should give minimum bytes
-        let line_writer = LineWriter::new_max_width(&mut writer, 50).unwrap();
+        let line_writer = LineWriter::new_max_width(50).unwrap();
         assert_eq!(line_writer.bytes_per_line(), 8);
 
         // Larger width should give more bytes
-        let line_writer = LineWriter::new_max_width(&mut writer, 150).unwrap();
+        let line_writer = LineWriter::new_max_width(150).unwrap();
         assert!(line_writer.bytes_per_line() >= 16);
     }
 
@@ -288,8 +304,8 @@ mod tests {
         let mut reader = std::io::Cursor::new(&test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        dump("Various bytes", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        dump("Various bytes", &mut reader, &mut line_writer, &mut writer).unwrap();
 
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Various bytes"));
@@ -308,8 +324,8 @@ mod tests {
         let mut reader = std::io::Cursor::new(test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        dump("Border Test", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        dump("Border Test", &mut reader, &mut line_writer, &mut writer).unwrap();
 
         let output = writer.to_utf8().unwrap();
         // Check for border characters
@@ -325,8 +341,8 @@ mod tests {
         let mut reader = std::io::Cursor::new(test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 8).unwrap();
-        dump("Empty", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        dump("Empty", &mut reader, &mut line_writer, &mut writer).unwrap();
 
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Empty"));
@@ -342,8 +358,14 @@ mod tests {
         let mut reader = std::io::Cursor::new(&test_data);
 
         let mut writer = BufferWriter::new();
-        let mut line_writer = LineWriter::new_bytes(&mut writer, 16).unwrap();
-        dump("Buffer boundary", &mut reader, &mut line_writer).unwrap();
+        let mut line_writer = LineWriter::new_bytes(16).unwrap();
+        dump(
+            "Buffer boundary",
+            &mut reader,
+            &mut line_writer,
+            &mut writer,
+        )
+        .unwrap();
 
         let output = writer.to_utf8().unwrap();
         assert!(output.contains("Buffer boundary"));
