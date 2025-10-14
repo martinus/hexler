@@ -9,6 +9,7 @@ use chrono::{DateTime, Local};
 use pager::Pager;
 use size::Size;
 use std::fs;
+use terminal_size::{terminal_size, Height, Width};
 
 use clap::Parser;
 use error::{HexlerError, Result};
@@ -197,13 +198,19 @@ pub fn run() -> Result<()> {
     let writer = std::io::stdout();
 
     // determine terminal size, and from that the number of bytes to print per line.
+
+    let size = terminal_size();
+    if let Some((Width(w), Height(h))) = size {
+        println!("Your terminal is {} cols wide and {} lines tall", w, h);
+    } else {
+        println!("Unable to get terminal size");
+    }
     let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(num_bytes),
         None => {
-            let term_width = term_size::dimensions()
-                .ok_or(HexlerError::TerminalSizeError)?
-                .0;
-            LineWriter::new_max_width(term_width)
+            let size = terminal_size();
+            let term_width = size.ok_or(HexlerError::TerminalSizeError)?.0;
+            LineWriter::new_max_width(term_width.0 as usize)
         }
     };
 

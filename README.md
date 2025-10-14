@@ -1,5 +1,9 @@
 # hexler
 
+[![CI](https://github.com/martinus/hexler/actions/workflows/ci.yml/badge.svg)](https://github.com/martinus/hexler/actions/workflows/ci.yml)
+[![Release](https://github.com/martinus/hexler/actions/workflows/release.yml/badge.svg)](https://github.com/martinus/hexler/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 A colorful hex viewer with sensible defaults and terminal-friendly output.
 
 ![hexler screenshot](img/Screenshot_20251012_101602.png)
@@ -17,6 +21,31 @@ While excellent tools like [hexyl](https://github.com/sharkdp/hexyl) and [hastyh
 
 ## Installation
 
+### From Releases (Recommended)
+
+Download the latest binary for your platform from the [Releases page](https://github.com/martinus/hexler/releases).
+
+#### Linux
+```bash
+# Download and install (example for x86_64)
+wget https://github.com/martinus/hexler/releases/latest/download/hexler-linux-x86_64
+chmod +x hexler-linux-x86_64
+sudo mv hexler-linux-x86_64 /usr/local/bin/hexler
+```
+
+#### macOS
+```bash
+# Download and install (example for Apple Silicon)
+wget https://github.com/martinus/hexler/releases/latest/download/hexler-macos-aarch64
+chmod +x hexler-macos-aarch64
+sudo mv hexler-macos-aarch64 /usr/local/bin/hexler
+```
+
+#### Windows
+Download `hexler-windows-x86_64.exe` from the releases page and add it to your PATH.
+
+### From Source
+
 ```bash
 # Build from source
 git clone https://github.com/martinus/hexler.git
@@ -25,6 +54,12 @@ cargo build --release
 ```
 
 The binary will be available at `target/release/hexler`.
+
+### From crates.io
+
+```bash
+cargo install hexler
+```
 
 ## Usage
 
