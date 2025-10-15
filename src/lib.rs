@@ -65,13 +65,18 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     // When reading data we make sure to always fill the buffer completely except for the last read.
     let mut buffer = vec![0u8; (MAX_READ_BUFFER_SIZE / bytes_per_line) * bytes_per_line];
 
-    // Double buffering: two output buffers that we recycle between threads
+    // Triple buffering: allows main thread to work on one buffer while writer processes another
+    // and a third is ready for immediate swap - reduces blocking
     let mut output_buffer_a = Vec::with_capacity(bytes_per_line * 10);
     let output_buffer_b = Vec::with_capacity(bytes_per_line * 10);
+    let output_buffer_c = Vec::with_capacity(bytes_per_line * 10);
 
-    // Bidirectional channels for buffer exchange
-    let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(0); // Send buffers to writer
-    let (return_tx, return_rx) = mpsc::sync_channel::<Vec<u8>>(1); // Get buffers back
+    // Bidirectional channels for buffer exchange - increased capacity to reduce blocking
+    let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(1); // Send buffers to writer with 1 buffer queue
+    let (return_tx, return_rx) = mpsc::sync_channel::<Vec<u8>>(2); // Get buffers back with 2 buffer queue
+
+    // Pre-populate return channel with third buffer before starting writer thread
+    let _ = return_tx.send(output_buffer_c);
 
     // Spawn writer thread - runs in parallel with reading/processing
     let writer_handle = thread::spawn(move || -> std::io::Result<()> {
@@ -100,7 +105,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         .into());
     }
 
-    // Current working buffer
+    // Start with buffer B
     let mut current_buffer = output_buffer_b;
 
     loop {
@@ -115,24 +120,15 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         }
 
         if total_read == 0 {
-            break; // Nothing more to read
+            break; // Nothing read, we're at EOF
         }
 
         // Process bytes in chunks aligned to line boundaries
         let data = &buffer[..total_read];
-        let mut offset = 0;
 
-        while offset < total_read {
-            let available = total_read - offset;
-            let to_write = available.min(bytes_per_line);
-
-            // Write directly from the buffer slice, no copying needed
-            line_writer.write_line(
-                &mut current_buffer,
-                &data[offset..offset + to_write],
-                to_write,
-            );
-            offset += to_write;
+        // Batch process lines - this is the hot path
+        for chunk in data.chunks(bytes_per_line) {
+            line_writer.write_line(&mut current_buffer, chunk);
         }
 
         // Send current buffer to writer thread
@@ -144,7 +140,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
             .into());
         }
 
-        // Get a recycled buffer back (blocks until writer is done with previous buffer)
+        // Get a recycled buffer back (should rarely block with triple buffering)
         current_buffer = return_rx.recv().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Writer thread disconnected")
         })?;
@@ -169,6 +165,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
 
     Ok(())
 }
+
 /// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
 pub fn demo<W: std::io::Write + Send + 'static>(

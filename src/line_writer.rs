@@ -99,21 +99,20 @@ impl LineWriter {
     ///
     /// # Arguments
     /// * `buffer` - Output buffer to append the line to (not cleared, only appended)
-    /// * `line_data` - Byte buffer to display (must be at least `bytes_in_buffer` long)
-    /// * `bytes_in_buffer` - Number of valid bytes in the buffer (may be less than bytes_per_line for the last line)
-    pub fn write_line(&mut self, buffer: &mut Vec<u8>, line_data: &[u8], bytes_in_buffer: usize) {
+    /// * `line_data` - Byte slice to display (may be less than bytes_per_line for the last line)
+    pub fn write_line(&mut self, buffer: &mut Vec<u8>, line_data: &[u8]) {
         // Write hex offset
         self.hex_formatter.write_offset(buffer, self.byte_counter);
         buffer.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
 
-        self.byte_counter += bytes_in_buffer;
+        self.byte_counter += line_data.len();
 
         // Write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
 
         // Process actual bytes
         let mut group_counter = 0;
-        for &byte in &line_data[..bytes_in_buffer] {
+        for &byte in line_data {
             // Add an additional space after 8 bytes
             if group_counter == 0 {
                 buffer.push(b' ');
@@ -128,12 +127,13 @@ impl LineWriter {
             buffer.extend_from_slice(self.hex_formatter.hex_byte(byte));
         }
 
-        // Fill remaining space with padding
-        let padding_count = self.bytes_per_line - bytes_in_buffer;
+        // Fill remaining space with padding, most of the time this will be 0, except for the last line
+        let padding_count = self.bytes_per_line - line_data.len();
 
         // Calculate number of separator spaces: count how many times group_counter wraps to 0
+        // line_data.len() & 7 will be 0 for multiples of 8, so it is only non-zero for the last line
         let num_separators =
-            ((bytes_in_buffer & 7) + padding_count) / 8 - (padding_count % 8 != 0) as usize;
+            ((line_data.len() & 7) + padding_count) / 8 - (padding_count % 8 != 0) as usize;
         let padding_size = num_separators + padding_count * 3;
         buffer.resize(buffer.len() + padding_size, b' ');
 
@@ -144,7 +144,7 @@ impl LineWriter {
         }
         buffer.extend_from_slice(b"\xE2\x94\x82 "); // "│ " in UTF-8
 
-        for &byte in &line_data[..bytes_in_buffer] {
+        for &byte in line_data {
             let next_color_id = self.byte_to_color.id(byte);
             if next_color_id != previous_color_id {
                 buffer.extend_from_slice(self.byte_to_color.bytes(byte));
@@ -232,7 +232,7 @@ mod tests {
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
-        line_writer.write_line(&mut buffer, &line_data, 8);
+        line_writer.write_line(&mut buffer, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // Hex values might have ANSI color codes between them
@@ -254,7 +254,7 @@ mod tests {
         line_data[1] = 0x42; // 'B'
         line_data[2] = 0x43; // 'C'
 
-        line_writer.write_line(&mut buffer, &line_data, 3);
+        line_writer.write_line(&mut buffer, &line_data[..3]);
 
         let output = String::from_utf8_lossy(&buffer);
         assert!(output.contains("41 42 43")); // The 3 bytes we wrote
@@ -267,10 +267,10 @@ mod tests {
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0u8; 8];
-        line_writer.write_line(&mut buffer, &line_data, 8);
+        line_writer.write_line(&mut buffer, &line_data);
 
         // Write another line - offset should have changed
-        line_writer.write_line(&mut buffer, &line_data, 8);
+        line_writer.write_line(&mut buffer, &line_data);
         let output = String::from_utf8_lossy(&buffer);
 
         // Should show first offset all zeros
@@ -287,7 +287,7 @@ mod tests {
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
-        line_writer.write_line(&mut buffer, &line_data, 8);
+        line_writer.write_line(&mut buffer, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // Should contain codepage 437 representations
@@ -319,7 +319,7 @@ mod tests {
         let mut line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0u8; 8];
-        line_writer.write_line(&mut buffer, &line_data, 8);
+        line_writer.write_line(&mut buffer, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // First line should have leading zeros
