@@ -9,7 +9,7 @@ use chrono::{DateTime, Local};
 use pager::Pager;
 use size::Size;
 use std::fs;
-use terminal_size::{terminal_size, Height, Width};
+use terminal_size::terminal_size;
 
 use clap::Parser;
 use error::{HexlerError, Result};
@@ -112,6 +112,9 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     // Track byte offset for hex display
     let mut byte_offset = 0;
 
+    // Reusable vector for formatted lines to avoid allocations
+    let mut formatted_lines: Vec<Vec<u8>> = Vec::new();
+
     loop {
         // Read until buffer is full or EOF - this ensures we only get partial lines at the very end
         let mut total_read = 0;
@@ -136,7 +139,8 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         // Calculate number of chunks
         let num_chunks = (data.len() + bytes_per_line - 1) / bytes_per_line;
 
-        let formatted_lines: Vec<Vec<u8>> = (0..num_chunks)
+        formatted_lines.clear();
+        (0..num_chunks)
             .into_par_iter()
             .map(|idx| {
                 let start = idx * bytes_per_line;
@@ -146,10 +150,10 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
                 line_writer.write_line(&mut line_buf, offset, &data[start..end]);
                 line_buf
             })
-            .collect();
+            .collect_into_vec(&mut formatted_lines);
 
-        for line in formatted_lines {
-            current_buffer.extend_from_slice(&line);
+        for line in &formatted_lines {
+            current_buffer.extend_from_slice(line);
         }
 
         // Update the byte offset
@@ -218,13 +222,6 @@ pub fn run() -> Result<()> {
     let writer = std::io::stdout();
 
     // determine terminal size, and from that the number of bytes to print per line.
-
-    let size = terminal_size();
-    if let Some((Width(w), Height(h))) = size {
-        println!("Your terminal is {} cols wide and {} lines tall", w, h);
-    } else {
-        println!("Unable to get terminal size");
-    }
     let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(num_bytes),
         None => {

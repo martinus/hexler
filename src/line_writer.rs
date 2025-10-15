@@ -93,12 +93,7 @@ impl LineWriter {
     /// * `buffer` - Output buffer to append the line to (not cleared, only appended)
     /// * `byte_offset` - The byte offset to display in the hex offset column
     /// * `line_data` - Byte slice to display (may be less than bytes_per_line for the last line)
-    pub fn write_line(
-        &self,
-        buffer: &mut Vec<u8>,
-        byte_offset: usize,
-        line_data: &[u8],
-    ) {
+    pub fn write_line(&self, buffer: &mut Vec<u8>, byte_offset: usize, line_data: &[u8]) {
         // Write hex offset
         self.hex_formatter.write_offset(buffer, byte_offset);
         buffer.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
