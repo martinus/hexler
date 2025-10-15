@@ -83,11 +83,12 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         let mut writer = writer;
         for mut buf in write_rx {
             writer.write_all(&buf)?;
+
             // Return the buffer for reuse (clear it first)
             buf.clear();
-            if return_tx.send(buf).is_err() {
-                break; // Main thread dropped the receiver
-            }
+
+            // Try to send buffer back, but ignore errors (main thread may be done)
+            let _ = return_tx.send(buf);
         }
         writer.flush()?;
         Ok(())
@@ -108,6 +109,9 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     // Start with buffer B
     let mut current_buffer = output_buffer_b;
 
+    // Track byte offset for hex display
+    let mut byte_offset = 0;
+
     loop {
         // Read until buffer is full or EOF - this ensures we only get partial lines at the very end
         let mut total_read = 0;
@@ -126,10 +130,30 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         // Process bytes in chunks aligned to line boundaries
         let data = &buffer[..total_read];
 
-        // Batch process lines - this is the hot path
-        for chunk in data.chunks(bytes_per_line) {
-            line_writer.write_line(&mut current_buffer, chunk);
+        // Batch process lines - this is the hot path. Parallel formatting: each chunk is formatted independently with its offset
+        use rayon::prelude::*;
+
+        // Calculate number of chunks
+        let num_chunks = (data.len() + bytes_per_line - 1) / bytes_per_line;
+
+        let formatted_lines: Vec<Vec<u8>> = (0..num_chunks)
+            .into_par_iter()
+            .map(|idx| {
+                let start = idx * bytes_per_line;
+                let end = (start + bytes_per_line).min(data.len());
+                let offset = byte_offset + start;
+                let mut line_buf = Vec::with_capacity(bytes_per_line * 4);
+                line_writer.write_line(&mut line_buf, offset, &data[start..end]);
+                line_buf
+            })
+            .collect();
+
+        for line in formatted_lines {
+            current_buffer.extend_from_slice(&line);
         }
+
+        // Update the byte offset
+        byte_offset += data.len();
 
         // Send current buffer to writer thread
         if write_tx.send(current_buffer).is_err() {
@@ -162,7 +186,6 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     drop(write_tx);
     drop(return_rx); // Close return channel too
     writer_handle.join().unwrap()?;
-
     Ok(())
 }
 

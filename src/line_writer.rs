@@ -18,7 +18,6 @@ pub struct LineWriter {
     ascii_renderer: AsciiRenderer,
     byte_to_color: ByteToColor,
     bytes_per_line: usize,
-    byte_counter: usize,
 }
 
 /// Border type for headers and footers.
@@ -47,7 +46,6 @@ impl LineWriter {
                 ascii_renderer: AsciiRenderer::new(),
                 byte_to_color: ByteToColor::new(),
                 bytes_per_line,
-                byte_counter: 0,
             })
         }
     }
@@ -86,26 +84,24 @@ impl LineWriter {
         }
     }
 
-    /// Writes a complete hex dump line with offset, hex bytes, and ASCII representation.
+    /// Writes a complete hex dump line with an explicit offset (stateless version for parallel processing).
     ///
-    /// Format: `00000000 │ 7f 45 4c 46 ... │ ⌂ELF...`
-    ///
-    /// The line has three sections:
-    /// 1. Offset (8 hex digits with grey leading zeros)
-    /// 2. Hex bytes (color-coded, grouped by 8)
-    /// 3. ASCII (CodePage 437 characters, color-coded)
-    ///
-    /// Colors are only written when they change to minimize output size.
+    /// This is a stateless version that takes an explicit byte offset,
+    /// making it suitable for parallel processing where multiple threads format lines concurrently.
     ///
     /// # Arguments
     /// * `buffer` - Output buffer to append the line to (not cleared, only appended)
+    /// * `byte_offset` - The byte offset to display in the hex offset column
     /// * `line_data` - Byte slice to display (may be less than bytes_per_line for the last line)
-    pub fn write_line(&mut self, buffer: &mut Vec<u8>, line_data: &[u8]) {
+    pub fn write_line(
+        &self,
+        buffer: &mut Vec<u8>,
+        byte_offset: usize,
+        line_data: &[u8],
+    ) {
         // Write hex offset
-        self.hex_formatter.write_offset(buffer, self.byte_counter);
+        self.hex_formatter.write_offset(buffer, byte_offset);
         buffer.extend_from_slice(b" \xE2\x94\x82"); // " │" in UTF-8
-
-        self.byte_counter += line_data.len();
 
         // Write hex numbers "00 01 ..."
         let mut previous_color_id: u8 = 0;
@@ -229,10 +225,10 @@ mod tests {
     #[test]
     fn test_write_line_full() {
         let mut buffer = Vec::new();
-        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        let line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x21, 0x00, 0xff]; // "Hello!" + NUL + 0xff
-        line_writer.write_line(&mut buffer, &line_data);
+        line_writer.write_line(&mut buffer, 0, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // Hex values might have ANSI color codes between them
@@ -247,14 +243,14 @@ mod tests {
     #[test]
     fn test_write_line_partial() {
         let mut buffer = Vec::new();
-        let mut line_writer = LineWriter::new_bytes(16).unwrap();
+        let line_writer = LineWriter::new_bytes(16).unwrap();
 
         let mut line_data = [0u8; 16];
         line_data[0] = 0x41; // 'A'
         line_data[1] = 0x42; // 'B'
         line_data[2] = 0x43; // 'C'
 
-        line_writer.write_line(&mut buffer, &line_data[..3]);
+        line_writer.write_line(&mut buffer, 0, &line_data[..3]);
 
         let output = String::from_utf8_lossy(&buffer);
         assert!(output.contains("41 42 43")); // The 3 bytes we wrote
@@ -262,32 +258,53 @@ mod tests {
     }
 
     #[test]
-    fn test_write_line_increments_byte_counter() {
+    fn test_write_line_with_different_offsets() {
         let mut buffer = Vec::new();
-        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        let line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0u8; 8];
-        line_writer.write_line(&mut buffer, &line_data);
+        line_writer.write_line(&mut buffer, 0, &line_data);
 
-        // Write another line - offset should have changed
-        line_writer.write_line(&mut buffer, &line_data);
+        // Write another line with different offset
+        line_writer.write_line(&mut buffer, 8, &line_data);
+
+        // Strip ANSI color codes to verify the actual content
         let output = String::from_utf8_lossy(&buffer);
+        let stripped = strip_ansi_codes(&output);
 
         // Should show first offset all zeros
-        assert!(output.contains("00000000"));
-        // The output has ANSI codes, so just check offset changes
-        // by checking that we have a second line with different offset chars
-        let lines: Vec<&str> = output.lines().collect();
-        assert!(lines.len() >= 2, "Should have at least 2 lines");
+        assert!(stripped.contains("00000000"));
+        // Should show second offset as 8
+        assert!(stripped.contains("00000008"));
+    }
+
+    // Helper function to strip ANSI escape codes for testing
+    #[cfg(test)]
+    fn strip_ansi_codes(s: &str) -> String {
+        let mut result = String::new();
+        let mut chars = s.chars();
+        while let Some(c) = chars.next() {
+            if c == '\x1b' {
+                // Skip until we find 'm' (end of ANSI code)
+                for next_c in chars.by_ref() {
+                    if next_c == 'm' {
+                        break;
+                    }
+                }
+            } else {
+                result.push(c);
+            }
+        }
+        result
     }
 
     #[test]
     fn test_codepage_437_characters() {
         let mut buffer = Vec::new();
-        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        let line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0x00, 0x01, 0x02, 0x20, 0x41, 0x80, 0x81, 0xff];
-        line_writer.write_line(&mut buffer, &line_data);
+        line_writer.write_line(&mut buffer, 0, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // Should contain codepage 437 representations
@@ -316,10 +333,10 @@ mod tests {
     #[test]
     fn test_hex_offset_leading_zeros() {
         let mut buffer = Vec::new();
-        let mut line_writer = LineWriter::new_bytes(8).unwrap();
+        let line_writer = LineWriter::new_bytes(8).unwrap();
 
         let line_data = [0u8; 8];
-        line_writer.write_line(&mut buffer, &line_data);
+        line_writer.write_line(&mut buffer, 0, &line_data);
 
         let output = String::from_utf8_lossy(&buffer);
         // First line should have leading zeros
