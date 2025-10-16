@@ -112,8 +112,8 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     // Track byte offset for hex display
     let mut byte_offset = 0;
 
-    // Reusable vector for formatted lines to avoid allocations
-    let mut formatted_lines: Vec<Vec<u8>> = Vec::new();
+    // Reusable vector for formatted lines to avoid allocations. All data in the buffer is reused so we do not need to reallocate
+    let mut formatted_lines_buf: Vec<Vec<u8>> = Vec::new();
 
     loop {
         // Read until buffer is full or EOF - this ensures we only get partial lines at the very end
@@ -138,21 +138,19 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
 
         // Calculate number of chunks
         let num_chunks = (data.len() + bytes_per_line - 1) / bytes_per_line;
+        if num_chunks > formatted_lines_buf.len() {
+            formatted_lines_buf.resize(num_chunks, Vec::with_capacity(bytes_per_line * 4));
+        }
 
-        formatted_lines.clear();
-        (0..num_chunks)
-            .into_par_iter()
-            .map(|idx| {
-                let start = idx * bytes_per_line;
-                let end = (start + bytes_per_line).min(data.len());
-                let offset = byte_offset + start;
-                let mut line_buf = Vec::with_capacity(bytes_per_line * 4);
-                line_writer.write_line(&mut line_buf, offset, &data[start..end]);
-                line_buf
-            })
-            .collect_into_vec(&mut formatted_lines);
+        data.par_chunks(bytes_per_line)
+            .enumerate()
+            .zip(formatted_lines_buf.par_iter_mut())
+            .for_each(|((idx, chunk), line_buf)| {
+                line_buf.clear();
+                line_writer.write_line(line_buf, byte_offset + idx * bytes_per_line, chunk);
+            });
 
-        for line in &formatted_lines {
+        for line in &formatted_lines_buf[..num_chunks] {
             current_buffer.extend_from_slice(line);
         }
 
