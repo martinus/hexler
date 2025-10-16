@@ -1,8 +1,12 @@
 # hexler
 
-A colorful hex viewer with sensible defaults and terminal-friendly output.
+[![CI](https://github.com/martinus/hexler/actions/workflows/ci.yml/badge.svg)](https://github.com/martinus/hexler/actions/workflows/ci.yml)
+[![Release](https://github.com/martinus/hexler/actions/workflows/release.yml/badge.svg)](https://github.com/martinus/hexler/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-![hexler screenshot](img/Screenshot_20251012_101602.png)
+A fast & colorful hex viewer with sensible defaults and terminal-friendly output.
+
+![hexler screenshot](img/hexler_showcase.png)
 
 ## Features
 
@@ -10,21 +14,26 @@ A colorful hex viewer with sensible defaults and terminal-friendly output.
 - **Colorized output**: Easy-to-read syntax highlighting for different byte types  
 - **Pager integration**: Uses your system pager by default (like `git` and `man`)
 - **Enhanced readability**: Displays CP437 characters for better visual parsing
+- **Fast**: Can dump about 250 MB/sec colored output to the terminal
 
 ## Why hexler?
 
-While excellent tools like [hexyl](https://github.com/sharkdp/hexyl) and [hastyhex](https://github.com/skeeto/hastyhex) exist, hexler focuses on practical everyday use with reasonable defaults. Originally created as a Rust learning project, it's evolved into my go-to hex viewer for its clean output and terminal integration.
+While excellent tools like [hexyl](https://github.com/sharkdp/hexyl) and [hastyhex](https://github.com/skeeto/hastyhex) exist, hexler focuses
+on practical everyday use with reasonable defaults. Originally created as a Rust learning project, it's evolved into my go-to hex viewer
+for its clean output and terminal integration.
 
 ## Installation
+
+### From Source
 
 ```bash
 # Build from source
 git clone https://github.com/martinus/hexler.git
 cd hexler
-cargo build --release
+make install
 ```
 
-The binary will be available at `target/release/hexler`.
+The binary will be available at `~/.cargo/bin/hexler`.
 
 ## Usage
 
@@ -41,36 +50,48 @@ cat file.bin | hexler
 
 ## Performance Benchmark
 
-Output size and runtime when processing a 181 MB executable (tested with `time hexler --stdout filename >/dev/null`):
+Output size and runtime when processing a 181 MB executable, tested with `hyperfine --warmup 1 --show-output "hexler --stdout filename >/dev/null"`
 
-| Output (MB) | Runtime (s) | Tool     | Sample Output |
-|------------:|------------:|----------|---------------|
-|        2004 |       2.210 | hexler   | `00004e80:  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b` |
-|        2729 |       1.002 | hastyhex | `00004e80  74 72 45 76 00 5f 5a 4e  53 74 38 69 6f 73 5f 62  trEv._ZNSt8ios_b` |
-|        2745 |      24.213 | hexyl    | `│00004e80│ 74 72 45 76 00 5f 5a 4e ┊ 53 74 38 69 6f 73 5f 62 │trEv⋄_ZN┊St8ios_b│` |
-|        4195 |       4.371 | hexxy    | `0004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b` |
-|        4757 |       5.354 | xxd      | `00004e80: 7472 4576 005f 5a4e 5374 3869 6f73 5f62  trEv._ZNSt8ios_b` |
-|        8598 |      24.213 | tscd     | `00004e80:  74 72 45 76 00 5f 5a 4e 53 74 38 69 6f 73 5f 62  trEv·_ZNSt8ios_b` |
+| Runtime (s) | Tool       | Comment
+|------------:|------------|------------
+|       0.443 | `hastyhex` | Doesn't print extended ASCII characters, no pager
+|       0.820 | `hexler`   | Colors, prints extended characters, shows borders, automatically uses `less` pager, automatically detects terminal width
+|       2.337 | `xxd`      | Colors, but no extended charcters, no pager
+|       3.986 | `hexyl`    | Colors, shows borders, but no pager and no extended characters
+|       4.826 | `xd`       | Prints extended ASCII characters, only grey, no pager
+|       --    | `hexxy`    | Crashes on random data
 
 
-## Comparison with Similar Tools
+## Screenshot Comparison with Similar Tools
 
-### Color Schemes
+All the screenshots were taken in default configuration, when run on the `256.bin` file.
 
-**TSCD** ([repo](https://github.com/fosres/TSCD))
-- Red: non-printable • Orange: alphabetic • Yellow: digits • Green: whitespace • Purple: punctuation • Gray: NUL
+### hastyhex
 
-**hastyhex** ([repo](https://github.com/skeeto/hastyhex))  
-- Green: whitespace (0a, 0b, 0c, 0d, 20) • Blue: printable (21-7e) • Yellow: non-printable • Gray: NUL
+Source: https://github.com/skeeto/hastyhex
 
-**hexxy** ([repo](https://github.com/sweetbbak/hexxy))
-- 256 different colors
+![hastyhex screenshot](img/hastyhex.png)
 
-**xxd** (system tool)
-- Basic colorization
+### hexler
 
-**xd** ([repo](https://bitbucket.org/delan/xd/src/default/))
-- Gray & white theme • Prints ALL characters
+Source: https://github.com/martinus/hexler
 
-**hexyl** ([repo](https://github.com/sharkdp/hexyl))
-- Feature-rich with beautiful output
+![hexler screenshot](img/hexler.png)
+
+### xxd
+
+Installed with packaging of Fedora Linux.
+
+![xxd screenshot](img/xxd.png)
+
+### hexyl
+
+Source: https://github.com/sharkdp/hexyl
+
+![hexyl screenshot](img/hexyl.png)
+
+### xd
+
+Source: https://lib.rs/crates/xd
+
+![xd screenshot](img/xd.png)

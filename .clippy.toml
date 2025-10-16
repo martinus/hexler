@@ -1,0 +1,7 @@
+# Clippy configuration for hexler
+# Enable additional lints beyond the default set
+
+# Deny common mistakes and bad practices
+cognitive-complexity-threshold = 30
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250

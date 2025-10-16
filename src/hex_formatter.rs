@@ -43,7 +43,7 @@ impl HexFormatter {
         b"   "
     }
 
-    /// Writes a byte offset directly into a Vec<u8> buffer.
+    /// Writes a byte offset directly into a `Vec<u8>` buffer.
     ///
     /// Optimized version that appends directly to a Vec without going through Write trait.
     ///

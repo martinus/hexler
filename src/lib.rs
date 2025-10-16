@@ -9,6 +9,7 @@ use chrono::{DateTime, Local};
 use pager::Pager;
 use size::Size;
 use std::fs;
+use terminal_size::terminal_size;
 
 use clap::Parser;
 use error::{HexlerError, Result};
@@ -64,24 +65,30 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     // When reading data we make sure to always fill the buffer completely except for the last read.
     let mut buffer = vec![0u8; (MAX_READ_BUFFER_SIZE / bytes_per_line) * bytes_per_line];
 
-    // Double buffering: two output buffers that we recycle between threads
+    // Triple buffering: allows main thread to work on one buffer while writer processes another
+    // and a third is ready for immediate swap - reduces blocking
     let mut output_buffer_a = Vec::with_capacity(bytes_per_line * 10);
     let output_buffer_b = Vec::with_capacity(bytes_per_line * 10);
+    let output_buffer_c = Vec::with_capacity(bytes_per_line * 10);
 
-    // Bidirectional channels for buffer exchange
-    let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(0); // Send buffers to writer
-    let (return_tx, return_rx) = mpsc::sync_channel::<Vec<u8>>(1); // Get buffers back
+    // Bidirectional channels for buffer exchange - increased capacity to reduce blocking
+    let (write_tx, write_rx) = mpsc::sync_channel::<Vec<u8>>(1); // Send buffers to writer with 1 buffer queue
+    let (return_tx, return_rx) = mpsc::sync_channel::<Vec<u8>>(2); // Get buffers back with 2 buffer queue
+
+    // Pre-populate return channel with third buffer before starting writer thread
+    let _ = return_tx.send(output_buffer_c);
 
     // Spawn writer thread - runs in parallel with reading/processing
     let writer_handle = thread::spawn(move || -> std::io::Result<()> {
         let mut writer = writer;
         for mut buf in write_rx {
             writer.write_all(&buf)?;
+
             // Return the buffer for reuse (clear it first)
             buf.clear();
-            if return_tx.send(buf).is_err() {
-                break; // Main thread dropped the receiver
-            }
+
+            // Try to send buffer back, but ignore errors (main thread may be done)
+            let _ = return_tx.send(buf);
         }
         writer.flush()?;
         Ok(())
@@ -99,8 +106,14 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         .into());
     }
 
-    // Current working buffer
+    // Start with buffer B
     let mut current_buffer = output_buffer_b;
+
+    // Track byte offset for hex display
+    let mut byte_offset = 0;
+
+    // Reusable vector for formatted lines to avoid allocations. All data in the buffer is reused so we do not need to reallocate
+    let mut formatted_lines_buf: Vec<Vec<u8>> = Vec::new();
 
     loop {
         // Read until buffer is full or EOF - this ensures we only get partial lines at the very end
@@ -114,25 +127,35 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
         }
 
         if total_read == 0 {
-            break; // Nothing more to read
+            break; // Nothing read, we're at EOF
         }
 
         // Process bytes in chunks aligned to line boundaries
         let data = &buffer[..total_read];
-        let mut offset = 0;
 
-        while offset < total_read {
-            let available = total_read - offset;
-            let to_write = available.min(bytes_per_line);
+        // Batch process lines - this is the hot path. Parallel formatting: each chunk is formatted independently with its offset
+        use rayon::prelude::*;
 
-            // Write directly from the buffer slice, no copying needed
-            line_writer.write_line(
-                &mut current_buffer,
-                &data[offset..offset + to_write],
-                to_write,
-            );
-            offset += to_write;
+        // Calculate number of chunks
+        let num_chunks = (data.len() + bytes_per_line - 1) / bytes_per_line;
+        if num_chunks > formatted_lines_buf.len() {
+            formatted_lines_buf.resize(num_chunks, Vec::with_capacity(bytes_per_line * 4));
         }
+
+        data.par_chunks(bytes_per_line)
+            .enumerate()
+            .zip(formatted_lines_buf.par_iter_mut())
+            .for_each(|((idx, chunk), line_buf)| {
+                line_buf.clear();
+                line_writer.write_line(line_buf, byte_offset + idx * bytes_per_line, chunk);
+            });
+
+        for line in &formatted_lines_buf[..num_chunks] {
+            current_buffer.extend_from_slice(line);
+        }
+
+        // Update the byte offset
+        byte_offset += data.len();
 
         // Send current buffer to writer thread
         if write_tx.send(current_buffer).is_err() {
@@ -143,7 +166,7 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
             .into());
         }
 
-        // Get a recycled buffer back (blocks until writer is done with previous buffer)
+        // Get a recycled buffer back (should rarely block with triple buffering)
         current_buffer = return_rx.recv().map_err(|_| {
             std::io::Error::new(std::io::ErrorKind::BrokenPipe, "Writer thread disconnected")
         })?;
@@ -165,9 +188,9 @@ pub fn dump<R: std::io::Read, W: std::io::Write + Send + 'static>(
     drop(write_tx);
     drop(return_rx); // Close return channel too
     writer_handle.join().unwrap()?;
-
     Ok(())
 }
+
 /// Demo mode: outputs bytes 0-255 to demonstrate all possible byte values and their colors.
 #[allow(clippy::needless_range_loop)]
 pub fn demo<W: std::io::Write + Send + 'static>(
@@ -200,10 +223,9 @@ pub fn run() -> Result<()> {
     let line_writer = match args.num_bytes_per_line {
         Some(num_bytes) => LineWriter::new_bytes(num_bytes),
         None => {
-            let term_width = term_size::dimensions()
-                .ok_or(HexlerError::TerminalSizeError)?
-                .0;
-            LineWriter::new_max_width(term_width)
+            let size = terminal_size();
+            let term_width = size.ok_or(HexlerError::TerminalSizeError)?.0;
+            LineWriter::new_max_width(term_width.0 as usize)
         }
     };
 
