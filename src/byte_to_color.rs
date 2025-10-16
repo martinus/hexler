@@ -15,10 +15,11 @@ impl ByteToColor {
     // I'm using 256-color ANSI escape codes here because the terminal in VSCode has a bug with the normal colors:
     // it doesn't use the correct brightness when the following character is a UTF-8 character.
 
-    const GREY: &'static str = "\x1b[38;5;8m"; // 256-color grey for special bytes
-    const GREEN: &'static str = "\x1b[38;5;46m"; // 256-color bright green
-    const BLUE: &'static str = "\x1b[38;5;33m"; // 256-color bright blue
-    const MAGENTA: &'static str = "\x1b[38;5;201m"; // 256-color bright magenta
+    const SENTINEL: &'static str = "\x1b[38;5;8m"; // 256-color grey for special bytes
+    const WHITESPACE: &'static str = "\x1b[38;5;50m"; // 256-color teal
+    const EXTENDED_ASCII: &'static str = "\x1b[38;5;33m"; // 256-color bright blue
+    const CONTROL_CHARS: &'static str = "\x1b[38;5;129m"; // 256-color bright magenta
+    const PRINTABLE_SYMBOLS: &'static str = "\x1b[38;5;226m"; // 256-color bright yellow
     const RESET: &'static str = "\x1b[0m";
 
     /// Creates a new ByteToColor instance with color mappings for all 256 byte values.
@@ -45,22 +46,23 @@ impl ByteToColor {
         for i in 0..=255u8 {
             let color = match i {
                 // NUL, DEL, 0xff
-                0x00 | 0x7f | 0xff => Self::GREY,
+                0x00 | 0x7f | 0xff => Self::SENTINEL,
 
                 // whitespace
-                0x0a | 0x0b | 0x0c | 0x0d | 0x20 => Self::GREEN,
+                0x0a | 0x0b | 0x0c | 0x0d | 0x20 => Self::WHITESPACE,
 
                 // symbols
-                0x01..=0x1f | 0x21..=0x2f | 0x3a..=0x40 | 0x5b..=0x60 | 0x7b..=0x7e => {
-                    Self::MAGENTA
-                }
+                0x01..=0x1f => Self::CONTROL_CHARS,
+
+                // printable symbols
+                0x21..=0x2f | 0x3a..=0x40 | 0x5b..=0x60 | 0x7b..=0x7e => Self::PRINTABLE_SYMBOLS,
 
                 0x30..=0x39 => Self::RESET, // digits
                 0x41..=0x5a => Self::RESET, // uppercase letters
                 0x61..=0x7a => Self::RESET, // lowercase letters
 
                 // remaining high bytes
-                0x80..=0xfe => Self::BLUE,
+                0x80..=0xfe => Self::EXTENDED_ASCII,
             };
             color_bytes[i as usize] = color.as_bytes();
             let val = color_to_id.entry(color).or_insert_with(|| {
@@ -105,30 +107,30 @@ mod tests {
     #[test]
     fn test_nul_byte_color() {
         let btc = ByteToColor::new();
-        assert_eq!(color(&btc, 0x00), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0x00), ByteToColor::SENTINEL);
     }
 
     #[test]
     fn test_del_byte_color() {
         let btc = ByteToColor::new();
-        assert_eq!(color(&btc, 0x7f), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0x7f), ByteToColor::SENTINEL);
     }
 
     #[test]
     fn test_extended_ascii_color() {
         let btc = ByteToColor::new();
-        assert_eq!(color(&btc, 0xff), ByteToColor::GREY);
+        assert_eq!(color(&btc, 0xff), ByteToColor::SENTINEL);
     }
 
     #[test]
     fn test_whitespace_colors() {
         let btc = ByteToColor::new();
         // LF, VT, FF, CR, SPACE
-        assert_eq!(color(&btc, 0x0a), ByteToColor::GREEN); // LF
-        assert_eq!(color(&btc, 0x0b), ByteToColor::GREEN); // VT
-        assert_eq!(color(&btc, 0x0c), ByteToColor::GREEN); // FF
-        assert_eq!(color(&btc, 0x0d), ByteToColor::GREEN); // CR
-        assert_eq!(color(&btc, 0x20), ByteToColor::GREEN); // SPACE
+        assert_eq!(color(&btc, 0x0a), ByteToColor::WHITESPACE); // LF
+        assert_eq!(color(&btc, 0x0b), ByteToColor::WHITESPACE); // VT
+        assert_eq!(color(&btc, 0x0c), ByteToColor::WHITESPACE); // FF
+        assert_eq!(color(&btc, 0x0d), ByteToColor::WHITESPACE); // CR
+        assert_eq!(color(&btc, 0x20), ByteToColor::WHITESPACE); // SPACE
     }
 
     #[test]
@@ -159,18 +161,18 @@ mod tests {
     fn test_symbol_colors() {
         let btc = ByteToColor::new();
         // Test various symbols
-        assert_eq!(color(&btc, b'!'), ByteToColor::MAGENTA);
-        assert_eq!(color(&btc, b'#'), ByteToColor::MAGENTA);
-        assert_eq!(color(&btc, b'@'), ByteToColor::MAGENTA);
-        assert_eq!(color(&btc, b'['), ByteToColor::MAGENTA);
-        assert_eq!(color(&btc, b'{'), ByteToColor::MAGENTA);
+        assert_eq!(color(&btc, b'!'), ByteToColor::CONTROL_CHARS);
+        assert_eq!(color(&btc, b'#'), ByteToColor::CONTROL_CHARS);
+        assert_eq!(color(&btc, b'@'), ByteToColor::CONTROL_CHARS);
+        assert_eq!(color(&btc, b'['), ByteToColor::CONTROL_CHARS);
+        assert_eq!(color(&btc, b'{'), ByteToColor::CONTROL_CHARS);
     }
 
     #[test]
     fn test_high_bytes_colors() {
         let btc = ByteToColor::new();
         for byte in 0x80..=0xfe {
-            assert_eq!(color(&btc, byte), ByteToColor::BLUE);
+            assert_eq!(color(&btc, byte), ByteToColor::EXTENDED_ASCII);
         }
     }
 
