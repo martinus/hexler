@@ -161,11 +161,11 @@ mod tests {
     fn test_symbol_colors() {
         let btc = ByteToColor::new();
         // Test various symbols
-        assert_eq!(color(&btc, b'!'), ByteToColor::CONTROL_CHARS);
-        assert_eq!(color(&btc, b'#'), ByteToColor::CONTROL_CHARS);
-        assert_eq!(color(&btc, b'@'), ByteToColor::CONTROL_CHARS);
-        assert_eq!(color(&btc, b'['), ByteToColor::CONTROL_CHARS);
-        assert_eq!(color(&btc, b'{'), ByteToColor::CONTROL_CHARS);
+        assert_eq!(color(&btc, b'!'), ByteToColor::PRINTABLE_SYMBOLS);
+        assert_eq!(color(&btc, b'#'), ByteToColor::PRINTABLE_SYMBOLS);
+        assert_eq!(color(&btc, b'@'), ByteToColor::PRINTABLE_SYMBOLS);
+        assert_eq!(color(&btc, b'['), ByteToColor::PRINTABLE_SYMBOLS);
+        assert_eq!(color(&btc, b'{'), ByteToColor::PRINTABLE_SYMBOLS);
     }
 
     #[test]
