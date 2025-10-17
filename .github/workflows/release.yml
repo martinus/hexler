@@ -13,17 +13,50 @@ jobs:
     name: Release via cargo-smart-release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cargo-smart-release
+        # cache cargo registry, git index and installed binaries to speed up repeated runs
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-smart-release
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Ensure cargo-smart-release
         run: |
-          cargo install --force cargo-smart-release
+          if [ -x "$HOME/.cargo/bin/cargo-smart-release" ]; then
+            echo "cargo-smart-release found in cache, skipping install"
+            $HOME/.cargo/bin/cargo-smart-release --version || true
+          else
+            cargo install cargo-smart-release
+          fi
+
+      - name: Ensure non-detached HEAD
+        # create a safe branch if we're on a detached HEAD so tools that need git history work
+        run: |
+          if [ -z "$(git symbolic-ref --quiet HEAD 2>/dev/null)" ]; then
+            echo "Detected detached HEAD. Creating temporary branch 'release-ci'"
+            git branch -f release-ci
+            git checkout release-ci
+          else
+            echo "On branch $(git rev-parse --abbrev-ref HEAD)"
+          fi
 
       - name: Run cargo-smart-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         # cargo-smart-release will create the GitHub Release, build artifacts and publish to crates.io
-        run: cargo smart-release
+        run: cargo smart-release --update-crates-index
