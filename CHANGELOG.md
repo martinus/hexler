@@ -154,6 +154,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <csr-id-ec3388bdd59a7b3cece4224db68d6c4a3aa02a7c/>
 <csr-id-0936fdca1440e84a3723689ac29c97bf5baf150e/>
 <csr-id-7160b910216bd6b56e04d5588a562ff1c20a38bd/>
+<csr-id-108cb8ed014421a82a60dc2245dce39b96ba51d1/>
 
 ### Documentation
 
@@ -181,7 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <csr-read-only-do-not-edit/>
 
- - 1 commit contributed to the release.
+ - 2 commits contributed to the release.
  - 1 commit was understood as [conventional](https://www.conventionalcommits.org).
  - 0 issues like '(#ID)' were seen in commit messages
 
@@ -192,6 +193,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 <details><summary>view details</summary>
 
  * **Uncategorized**
+    - Release hexler v1.0.0 ([`7ed7c81`](https://github.com/martinus/hexler/commit/7ed7c816b2da9e7b92a4d81b6717d5700c19f073))
     - Add CHANGELOG.md to document project updates and version history ([`108cb8e`](https://github.com/martinus/hexler/commit/108cb8ed014421a82a60dc2245dce39b96ba51d1))
 </details>
 
