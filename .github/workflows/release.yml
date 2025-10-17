@@ -55,6 +55,19 @@ jobs:
             echo "On branch $(git rev-parse --abbrev-ref HEAD)"
           fi
 
+      - name: Ensure git author/committer identity
+        # cargo-smart-release expects a parseable GIT_AUTHOR_IDENT; set a safe default
+        run: |
+          git config user.name "Martin Leitner-Ankerl"
+          git config user.email "martin.ankerl@gmail.com"
+          # Provide simple ident strings so tools that parse GIT_AUTHOR_IDENT work
+          if [ -z "${GIT_AUTHOR_IDENT:-}" ]; then
+            echo "GIT_AUTHOR_IDENT=Martin Leitner-Ankerl <martin.ankerl@gmail.com>" >> $GITHUB_ENV
+          fi
+          if [ -z "${GIT_COMMITTER_IDENT:-}" ]; then
+            echo "GIT_COMMITTER_IDENT=Martin Leitner-Ankerl <martin.ankerl@gmail.com>" >> $GITHUB_ENV
+          fi
+
       - name: Run cargo-smart-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
